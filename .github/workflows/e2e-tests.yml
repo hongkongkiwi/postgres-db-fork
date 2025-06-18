@@ -27,8 +27,8 @@ jobs:
 
     strategy:
       matrix:
-        postgres_version: ["12", "13", "14", "15"]
-        go_version: ["1.21", "1.22"]
+        postgres_version: ["17.5"]
+        go_version: ["1.22"]
 
     services:
       postgres:

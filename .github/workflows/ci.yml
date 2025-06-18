@@ -94,7 +94,7 @@ jobs:
           POSTGRES_TEST_DB_NAME: postgres
 
       - name: "Upload coverage"
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           file: ./coverage.out
           flags: unittests

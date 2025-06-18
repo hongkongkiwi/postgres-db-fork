@@ -67,6 +67,17 @@ jobs:
           go mod download
           go mod tidy
 
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          timeout 120s bash -c '
+            until pg_isready -h postgres -p 5432 -U testuser; do
+              echo "Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+        env:
+          PGPASSWORD: testpass # pragma: allowlist secret
+
       - name: Run unit tests
         run: |
           go test -v ./... -short -race -coverprofile=unit-coverage.out
@@ -75,7 +86,7 @@ jobs:
         run: |
           go test -v -tags=integration ./... -timeout=15m
         env:
-          POSTGRES_HOST: localhost
+          POSTGRES_HOST: postgres
           POSTGRES_PORT: "5432"
           POSTGRES_USER: testuser
           POSTGRES_PASSWORD: testpass # pragma: allowlist secret
@@ -86,12 +97,23 @@ jobs:
           chmod +x scripts/run-e2e-tests.sh
           ./scripts/run-e2e-tests.sh coverage
         env:
-          POSTGRES_HOST: localhost
+          POSTGRES_HOST: postgres
           POSTGRES_PORT: "5432"
           POSTGRES_USER: testuser
           POSTGRES_PASSWORD: testpass # pragma: allowlist secret
           POSTGRES_DB: testdb
           DOCKER_API_VERSION: "1.40"
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          timeout 120s bash -c '
+            until pg_isready -h postgres -p 5432 -U testuser; do
+              echo "Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+        env:
+          PGPASSWORD: testpass # pragma: allowlist secret
 
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
@@ -144,6 +166,17 @@ jobs:
           go mod download
           go mod tidy
 
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          timeout 120s bash -c '
+            until pg_isready -h postgres -p 5432 -U testuser; do
+              echo "Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+        env:
+          PGPASSWORD: testpass # pragma: allowlist secret
+
       - name: Run comprehensive E2E tests
         run: |
           chmod +x scripts/run-e2e-tests.sh
@@ -151,6 +184,17 @@ jobs:
         env:
           POSTGRES_E2E_TEST: "true"
           DOCKER_API_VERSION: "1.40"
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          timeout 120s bash -c '
+            until pg_isready -h postgres -p 5432 -U testuser; do
+              echo "Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+        env:
+          PGPASSWORD: testpass # pragma: allowlist secret
 
       - name: Generate test summary
         if: always()
@@ -200,6 +244,17 @@ jobs:
         run: |
           go mod download
           go mod tidy
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          timeout 120s bash -c '
+            until pg_isready -h postgres -p 5432 -U testuser; do
+              echo "Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+        env:
+          PGPASSWORD: testpass # pragma: allowlist secret
 
       - name: Run performance tests
         run: |

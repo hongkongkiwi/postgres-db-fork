@@ -87,7 +87,7 @@ jobs:
       - name: "Run tests"
         run: go test -v -race -coverprofile=coverage.out ./...
         env:
-          POSTGRES_TEST_DB_HOST: localhost
+          POSTGRES_TEST_DB_HOST: postgres
           POSTGRES_TEST_DB_PORT: "5432"
           POSTGRES_TEST_DB_USER: postgres
           POSTGRES_TEST_DB_PASSWORD: postgres # pragma: allowlist secret
@@ -141,15 +141,15 @@ jobs:
 
       - name: "Setup test databases"
         run: | # pragma: allowlist secret
-          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -c "CREATE DATABASE test_source;"
-          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -c "CREATE DATABASE test_target;"
-          PGPASSWORD=postgres psql -h localhost -U postgres -d test_source -c "CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100));"
-          PGPASSWORD=postgres psql -h localhost -U postgres -d test_source -c "INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie');"
+          PGPASSWORD=postgres psql -h postgres -U postgres -d postgres -c "CREATE DATABASE test_source;"
+          PGPASSWORD=postgres psql -h postgres -U postgres -d postgres -c "CREATE DATABASE test_target;"
+          PGPASSWORD=postgres psql -h postgres -U postgres -d test_source -c "CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100));"
+          PGPASSWORD=postgres psql -h postgres -U postgres -d test_source -c "INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie');"
 
       - name: "Run integration tests"
         run: go test -v -tags=integration ./...
         env:
-          POSTGRES_TEST_DB_HOST: localhost
+          POSTGRES_TEST_DB_HOST: postgres
           POSTGRES_TEST_DB_PORT: "5432"
           POSTGRES_TEST_DB_USER: postgres
           POSTGRES_TEST_DB_PASSWORD: postgres # pragma: allowlist secret
@@ -190,15 +190,15 @@ jobs:
 
       - name: "Setup test databases"
         run: | # pragma: allowlist secret
-          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -c "CREATE DATABASE e2e_source;"
-          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -c "CREATE DATABASE e2e_target;"
-          PGPASSWORD=postgres psql -h localhost -U postgres -d e2e_source -c "CREATE TABLE products (id SERIAL PRIMARY KEY, name VARCHAR(100), price DECIMAL(10,2));"
-          PGPASSWORD=postgres psql -h localhost -U postgres -d e2e_source -c "INSERT INTO products (name, price) VALUES ('Widget', 19.99), ('Gadget', 29.99);"
+          PGPASSWORD=postgres psql -h postgres -U postgres -d postgres -c "CREATE DATABASE e2e_source;"
+          PGPASSWORD=postgres psql -h postgres -U postgres -d postgres -c "CREATE DATABASE e2e_target;"
+          PGPASSWORD=postgres psql -h postgres -U postgres -d e2e_source -c "CREATE TABLE products (id SERIAL PRIMARY KEY, name VARCHAR(100), price DECIMAL(10,2));"
+          PGPASSWORD=postgres psql -h postgres -U postgres -d e2e_source -c "INSERT INTO products (name, price) VALUES ('Widget', 19.99), ('Gadget', 29.99);"
 
       - name: "Run E2E tests"
         run: go test -v -tags=e2e ./...
         env:
-          POSTGRES_TEST_DB_HOST: localhost
+          POSTGRES_TEST_DB_HOST: postgres
           POSTGRES_TEST_DB_PORT: "5432"
           POSTGRES_TEST_DB_USER: postgres
           POSTGRES_TEST_DB_PASSWORD: postgres # pragma: allowlist secret

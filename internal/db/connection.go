@@ -203,3 +203,19 @@ func (c *Connection) GetTableList(schemaName string) ([]string, error) {
 
 	return tables, rows.Err()
 }
+
+// TerminateAllConnections terminates all connections to the specified database except for the current one
+func (c *Connection) TerminateAllConnections(dbName string) error {
+	terminateSQL := `
+		SELECT pg_terminate_backend(pg_stat_activity.pid)
+		FROM pg_stat_activity
+		WHERE pg_stat_activity.datname = $1
+		  AND pid <> pg_backend_pid();
+	`
+	_, err := c.DB.Exec(terminateSQL, dbName)
+	if err != nil {
+		return fmt.Errorf("failed to terminate connections for database %s: %w", dbName, err)
+	}
+	logrus.Infof("Terminated all connections to database %s", dbName)
+	return nil
+}

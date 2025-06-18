@@ -236,6 +236,20 @@ func insertRealisticData(t *testing.T, conn *db.Connection) {
 	}
 }
 
+// disconnectAllUsers terminates all connections to a database
+func disconnectAllUsers(t *testing.T, env *TestEnvironment, dbName string) {
+	// Connect to a maintenance database (like 'postgres') to terminate connections
+	conn := env.CreateConnection(t, "postgres")
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Logf("Failed to close maintenance connection: %v", err)
+		}
+	}()
+
+	err := conn.TerminateAllConnections(dbName)
+	require.NoError(t, err, "Failed to terminate connections for database %s", dbName)
+}
+
 // testProductionToStaging simulates forking a production database to staging
 func testProductionToStaging(t *testing.T, sourceEnv *TestEnvironment, sourceDB string) {
 	stagingDB := "staging_app"
@@ -321,49 +335,17 @@ func testCrossServerMigration(t *testing.T, sourceEnv *TestEnvironment, sourceDB
 	destEnv.AssertRowCount(t, targetDB, "products", 50)
 }
 
-// testLargeDatasetFork tests forking with larger datasets
+// testLargeDatasetFork simulates forking a database with a large amount of data
 func testLargeDatasetFork(t *testing.T, sourceEnv *TestEnvironment, sourceDB string) {
-	// Create additional large dataset
-	conn := sourceEnv.CreateConnection(t, sourceDB)
-	defer func() {
-		if err := conn.Close(); err != nil {
-			t.Logf("Failed to close connection: %v", err)
-		}
-	}()
+	largeDatasetDB := "large_dataset_copy"
 
-	// Create a large events table
-	_, err := conn.DB.Exec(`
-		CREATE TABLE events (
-			id SERIAL PRIMARY KEY,
-			event_type VARCHAR(50),
-			user_id INTEGER,
-			data JSONB,
-			created_at TIMESTAMP DEFAULT NOW()
-		);
-		CREATE INDEX idx_events_type ON events(event_type);
-		CREATE INDEX idx_events_created_at ON events(created_at);
-	`)
-	require.NoError(t, err)
+	// Disconnect any active connections to the source database before using it as a template
+	disconnectAllUsers(t, sourceEnv, sourceDB)
 
-	// Insert large dataset (simulate production volume)
-	for i := 1; i <= 2000; i++ {
-		_, err := conn.DB.Exec(`
-			INSERT INTO events (event_type, user_id, data)
-			VALUES ($1, $2, $3)
-		`,
-			[]string{"login", "logout", "purchase", "view", "click"}[i%5],
-			(i%100)+1,
-			fmt.Sprintf(`{"timestamp": "%d", "session_id": "sess_%d"}`, i, i),
-		)
-		require.NoError(t, err)
-	}
-
-	// Fork with smaller chunk size to test chunking
-	targetDB := "large_dataset_copy"
 	cfg := &config.ForkConfig{
 		Source:         *sourceEnv.GetDatabaseConfig(sourceDB),
 		Destination:    *sourceEnv.GetDatabaseConfig("postgres"),
-		TargetDatabase: targetDB,
+		TargetDatabase: largeDatasetDB,
 		DropIfExists:   true,
 		MaxConnections: 3,
 		ChunkSize:      200, // Smaller chunks to test chunking logic
@@ -371,13 +353,13 @@ func testLargeDatasetFork(t *testing.T, sourceEnv *TestEnvironment, sourceDB str
 	}
 
 	forker := fork.NewForker(cfg)
-	err = forker.Fork(context.Background())
+	err := forker.Fork(context.Background())
 	require.NoError(t, err)
 
 	// Verify large dataset was copied correctly
-	sourceEnv.AssertRowCount(t, targetDB, "events", 2000)
-	sourceEnv.AssertTableExists(t, targetDB, "users")
-	sourceEnv.AssertRowCount(t, targetDB, "users", 100)
+	sourceEnv.AssertRowCount(t, largeDatasetDB, "events", 2000)
+	sourceEnv.AssertTableExists(t, largeDatasetDB, "users")
+	sourceEnv.AssertRowCount(t, largeDatasetDB, "users", 100)
 }
 
 // testSchemaOnlyMigration tests schema-only forking

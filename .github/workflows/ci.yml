@@ -84,17 +84,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: "Wait for PostgreSQL to be ready"
-        run: |
-          timeout 120s bash -c '
-            until pg_isready -h localhost -p 5432 -U postgres; do
-              echo "Waiting for PostgreSQL..."
-              sleep 2
-            done
-          '
-        env:
-          PGPASSWORD: postgres # pragma: allowlist secret
-
       - name: "Run tests"
         run: go test -v -race -coverprofile=coverage.out ./...
         env:
@@ -150,17 +139,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: "Wait for PostgreSQL to be ready"
-        run: |
-          timeout 120s bash -c '
-            until pg_isready -h localhost -p 5432 -U postgres; do
-              echo "Waiting for PostgreSQL..."
-              sleep 2
-            done
-          '
-        env:
-          PGPASSWORD: postgres # pragma: allowlist secret
-
       - name: "Setup test databases"
         run: | # pragma: allowlist secret
           PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -c "CREATE DATABASE test_source;"
@@ -206,17 +184,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      - name: "Wait for PostgreSQL to be ready"
-        run: |
-          timeout 120s bash -c '
-            until pg_isready -h localhost -p 5432 -U postgres; do
-              echo "Waiting for PostgreSQL..."
-              sleep 2
-            done
-          '
-        env:
-          PGPASSWORD: postgres # pragma: allowlist secret
 
       - name: "Build application"
         run: go build -o postgres-db-fork .

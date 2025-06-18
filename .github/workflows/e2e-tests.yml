@@ -67,17 +67,6 @@ jobs:
           go mod download
           go mod tidy
 
-      - name: Wait for PostgreSQL to be ready
-        run: |
-          timeout 120s bash -c '
-            until pg_isready -h localhost -p 5432 -U testuser; do
-              echo "Waiting for PostgreSQL..."
-              sleep 2
-            done
-          '
-        env:
-          PGPASSWORD: testpass # pragma: allowlist secret
-
       - name: Run unit tests
         run: |
           go test -v ./... -short -race -coverprofile=unit-coverage.out
@@ -155,17 +144,6 @@ jobs:
           go mod download
           go mod tidy
 
-      - name: Wait for PostgreSQL to be ready
-        run: |
-          timeout 120s bash -c '
-            until pg_isready -h localhost -p 5432 -U testuser; do
-              echo "Waiting for PostgreSQL..."
-              sleep 2
-            done
-          '
-        env:
-          PGPASSWORD: testpass # pragma: allowlist secret
-
       - name: Run comprehensive E2E tests
         run: |
           chmod +x scripts/run-e2e-tests.sh
@@ -222,17 +200,6 @@ jobs:
         run: |
           go mod download
           go mod tidy
-
-      - name: Wait for PostgreSQL to be ready
-        run: |
-          timeout 120s bash -c '
-            until pg_isready -h localhost -p 5432 -U testuser; do
-              echo "Waiting for PostgreSQL..."
-              sleep 2
-            done
-          '
-        env:
-          PGPASSWORD: testpass # pragma: allowlist secret
 
       - name: Run performance tests
         run: |

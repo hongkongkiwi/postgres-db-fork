@@ -1,32 +1,105 @@
-name: PR Database Preview
+name: PR Database Management
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
   pull_request_target:
     types: [closed]
-
-env:
-  # Database connection settings
-  PGFORK_SOURCE_HOST: ${{ secrets.STAGING_DB_HOST }}
-  PGFORK_SOURCE_USER: ${{ secrets.STAGING_DB_USER }}
-  PGFORK_SOURCE_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
-  PGFORK_SOURCE_DATABASE: myapp_staging
-  PGFORK_SOURCE_SSLMODE: require
-
-  PGFORK_DEST_HOST: ${{ secrets.PREVIEW_DB_HOST }}
-  PGFORK_DEST_USER: ${{ secrets.PREVIEW_DB_USER }}
-  PGFORK_DEST_PASSWORD: ${{ secrets.PREVIEW_DB_PASSWORD }}
-  PGFORK_DEST_SSLMODE: require
-
-  # Template variables for database naming
-  PGFORK_VAR_PR_NUMBER: ${{ github.event.pull_request.number }}
-  PGFORK_VAR_BRANCH: ${{ github.head_ref }}
+  schedule:
+    # Cleanup old databases daily at 2 AM UTC
+    - cron: '0 2 * * *'
 
 jobs:
-  create-preview-db:
+  # Method 1: Using postgres-db-fork as a GitHub Action (Recommended)
+  create-preview-db-action:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
+    name: Create Preview Database (Action)
+
+    steps:
+      - name: Create PR preview database
+        uses: your-org/postgres-db-fork@v1
+        with:
+          command: fork
+          source-host: ${{ secrets.STAGING_DB_HOST }}
+          source-user: ${{ secrets.STAGING_DB_USER }}
+          source-password: ${{ secrets.STAGING_DB_PASSWORD }}
+          source-database: myapp_staging
+          source-sslmode: require
+          dest-host: ${{ secrets.PREVIEW_DB_HOST }}
+          dest-user: ${{ secrets.PREVIEW_DB_USER }}
+          dest-password: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          dest-sslmode: require
+          target-database: "myapp_pr_{{.PR_NUMBER}}"
+          drop-if-exists: true
+          max-connections: 8
+          timeout: 15m
+          output-format: json
+          quiet: true
+        id: fork-db
+
+      - name: Validate database creation
+        uses: your-org/postgres-db-fork@v1
+        with:
+          command: validate
+          dest-host: ${{ secrets.PREVIEW_DB_HOST }}
+          dest-user: ${{ secrets.PREVIEW_DB_USER }}
+          dest-password: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          target-database: ${{ steps.fork-db.outputs.target-database }}
+          quick: true
+          output-format: json
+
+      - name: Update deployment status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = context.payload.pull_request.head.sha;
+
+            await github.rest.repos.createDeploymentStatus({
+              owner,
+              repo,
+              deployment_id: context.payload.deployment?.id,
+              state: 'success',
+              environment_url: `https://myapp-${{ steps.fork-db.outputs.target-database }}.preview.example.com`,
+              description: 'Preview database ready'
+            });
+
+      - name: Comment on PR with database info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const dbName = '${{ steps.fork-db.outputs.target-database }}';
+            const connectionString = '${{ steps.fork-db.outputs.connection-string }}';
+            const previewUrl = `https://myapp-${dbName}.preview.example.com`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🗄️ Preview Database Ready
+
+              **Database:** \`${dbName}\`
+              **Preview URL:** [${previewUrl}](${previewUrl})
+              **Connection:** \`${connectionString}\`
+
+              ### Quick Actions
+              - 🔍 [View Database Metrics](https://monitoring.example.com/db/${dbName})
+              - 📊 [Query Interface](https://pgadmin.example.com/?db=${dbName})
+              - 🔄 Re-run this action to refresh the database
+
+              *This database will be automatically cleaned up when the PR is closed.*`
+            });
+
+    outputs:
+      database-name: ${{ steps.fork-db.outputs.target-database }}
+      connection-string: ${{ steps.fork-db.outputs.connection-string }}
+
+  # Method 2: Using the binary directly (Alternative approach)
+  create-preview-db-binary:
+    if: false # Disabled by default - enable by setting to: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    name: Create Preview Database (Binary)
 
     steps:
       - name: Checkout code
@@ -35,74 +108,67 @@ jobs:
       - name: Download postgres-db-fork
         run: |
           # Download latest release
-          curl -L -o postgres-db-fork \
-            https://github.com/your-org/postgres-db-fork/releases/latest/download/postgres-db-fork-linux-amd64
+          LATEST_URL=$(curl -s https://api.github.com/repos/your-org/postgres-db-fork/releases/latest | \
+            jq -r '.assets[] | select(.name | contains("linux-amd64")) | .browser_download_url')
+          curl -L -o postgres-db-fork "$LATEST_URL"
           chmod +x postgres-db-fork
 
       - name: Create PR preview database
-        id: create_db
+        id: create-db
+        env:
+          PGFORK_SOURCE_HOST: ${{ secrets.STAGING_DB_HOST }}
+          PGFORK_SOURCE_USER: ${{ secrets.STAGING_DB_USER }}
+          PGFORK_SOURCE_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          PGFORK_SOURCE_DATABASE: myapp_staging
+          PGFORK_DEST_HOST: ${{ secrets.PREVIEW_DB_HOST }}
+          PGFORK_DEST_USER: ${{ secrets.PREVIEW_DB_USER }}
+          PGFORK_DEST_PASSWORD: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          PGFORK_TARGET_DATABASE: "myapp_pr_{{.PR_NUMBER}}"
+          PGFORK_VAR_PR_NUMBER: ${{ github.event.pull_request.number }}
+          PGFORK_VAR_BRANCH: ${{ github.head_ref }}
+          PGFORK_OUTPUT_FORMAT: json
+          PGFORK_QUIET: true
+          PGFORK_DROP_IF_EXISTS: true
         run: |
-          export PGFORK_TARGET_DATABASE="myapp_pr_{{.PR_NUMBER}}"
-          export PGFORK_OUTPUT_FORMAT=json
-          export PGFORK_QUIET=true
-          export PGFORK_DROP_IF_EXISTS=true
-
-          # Create the database and capture output
+          # Create the database
           ./postgres-db-fork fork > result.json
 
-          # Extract database name for outputs
+          # Extract information
           DB_NAME=$(jq -r '.database' result.json)
-          echo "database_name=$DB_NAME" >> $GITHUB_OUTPUT
-          echo "preview_url=https://myapp-$DB_NAME.preview.example.com" >> $GITHUB_OUTPUT
+          DURATION=$(jq -r '.duration' result.json)
 
-          # Output for GitHub Actions summary
-          echo "## 🗄️ Preview Database Created" >> $GITHUB_STEP_SUMMARY
-          echo "**Database:** \`$DB_NAME\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Preview URL:** https://myapp-$DB_NAME.preview.example.com" >> $GITHUB_STEP_SUMMARY
+          echo "database-name=$DB_NAME" >> $GITHUB_OUTPUT
+          echo "duration=$DURATION" >> $GITHUB_OUTPUT
 
-      - name: Comment on PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## 🗄️ Preview Database Ready
-
-              **Database:** \`${{ steps.create_db.outputs.database_name }}\`
-              **Preview URL:** ${{ steps.create_db.outputs.preview_url }}
-
-              This database will be automatically cleaned up when the PR is closed.`
-            })
+          # Create step summary
+          echo "## 🗄️ Database Fork Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database:** \`$DB_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Duration:** $DURATION" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ✅ Success" >> $GITHUB_STEP_SUMMARY
 
     outputs:
-      database_name: ${{ steps.create_db.outputs.database_name }}
-      preview_url: ${{ steps.create_db.outputs.preview_url }}
+      database-name: ${{ steps.create-db.outputs.database-name }}
 
+  # Cleanup when PR is closed
   cleanup-preview-db:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
+    name: Cleanup Preview Database
 
     steps:
-      - name: Download postgres-db-fork
-        run: |
-          # Download latest release
-          curl -L -o postgres-db-fork \
-            https://github.com/your-org/postgres-db-fork/releases/latest/download/postgres-db-fork-linux-amd64
-          chmod +x postgres-db-fork
+      - name: Cleanup PR database
+        uses: your-org/postgres-db-fork@v1
+        with:
+          command: cleanup
+          host: ${{ secrets.PREVIEW_DB_HOST }}
+          user: ${{ secrets.PREVIEW_DB_USER }}
+          password: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          pattern: "myapp_pr_${{ github.event.pull_request.number }}"
+          force: true
+          output-format: json
+          quiet: true
 
-      - name: Cleanup PR preview database
-        run: |
-          export PGFORK_CLEANUP_HOST=${{ secrets.PREVIEW_DB_HOST }}
-          export PGFORK_CLEANUP_USER=${{ secrets.PREVIEW_DB_USER }}
-          export PGFORK_CLEANUP_PASSWORD=${{ secrets.PREVIEW_DB_PASSWORD }}
-          export PGFORK_CLEANUP_PATTERN="myapp_pr_${{ github.event.pull_request.number }}"
-          export PGFORK_CLEANUP_FORCE=true
-
-          ./postgres-db-fork cleanup --output-format json --quiet
-
-      - name: Comment on PR
+      - name: Comment on PR cleanup
         uses: actions/github-script@v7
         with:
           script: |
@@ -112,28 +178,103 @@ jobs:
               repo: context.repo.repo,
               body: `## 🧹 Preview Database Cleaned Up
 
-              The preview database for this PR has been automatically removed.`
-            })
+              The preview database \`myapp_pr_${{ github.event.pull_request.number }}\` has been automatically removed.
 
-  # Optional: Scheduled cleanup of old databases
+              All associated resources have been cleaned up.`
+            });
+
+  # Scheduled cleanup of old databases
   scheduled-cleanup:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    name: Scheduled Database Cleanup
 
     steps:
-      - name: Download postgres-db-fork
-        run: |
-          # Download latest release
-          curl -L -o postgres-db-fork \
-            https://github.com/your-org/postgres-db-fork/releases/latest/download/postgres-db-fork-linux-amd64
-          chmod +x postgres-db-fork
+      - name: List databases before cleanup
+        uses: your-org/postgres-db-fork@v1
+        with:
+          command: list
+          host: ${{ secrets.PREVIEW_DB_HOST }}
+          user: ${{ secrets.PREVIEW_DB_USER }}
+          password: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          pattern: "myapp_pr_*"
+          older-than: 7d
+          show-age: true
+          output-format: json
+        id: list-old
 
       - name: Cleanup old PR databases
-        run: |
-          export PGFORK_CLEANUP_HOST=${{ secrets.PREVIEW_DB_HOST }}
-          export PGFORK_CLEANUP_USER=${{ secrets.PREVIEW_DB_USER }}
-          export PGFORK_CLEANUP_PASSWORD=${{ secrets.PREVIEW_DB_PASSWORD }}
-          export PGFORK_CLEANUP_PATTERN="myapp_pr_*"
-          export PGFORK_CLEANUP_OLDER_THAN=7d
+        uses: your-org/postgres-db-fork@v1
+        with:
+          command: cleanup
+          host: ${{ secrets.PREVIEW_DB_HOST }}
+          user: ${{ secrets.PREVIEW_DB_USER }}
+          password: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          pattern: "myapp_pr_*"
+          older-than: 7d
+          exclude: "myapp_pr_123,myapp_pr_important"  # Protect specific databases
+          output-format: json
 
-          ./postgres-db-fork cleanup --output-format json
+      - name: Report cleanup results
+        run: |
+          echo "## 📊 Scheduled Cleanup Report" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Databases cleaned:** See action logs for details" >> $GITHUB_STEP_SUMMARY
+
+  # Validation job (can be used independently)
+  validate-database-config:
+    if: github.event.action == 'opened' || github.event.action == 'synchronize'
+    runs-on: ubuntu-latest
+    name: Validate Database Configuration
+
+    steps:
+      - name: Validate source database connection
+        uses: your-org/postgres-db-fork@v1
+        with:
+          command: validate
+          source-host: ${{ secrets.STAGING_DB_HOST }}
+          source-user: ${{ secrets.STAGING_DB_USER }}
+          source-password: ${{ secrets.STAGING_DB_PASSWORD }}
+          source-database: myapp_staging
+          quick: true
+          output-format: json
+
+      - name: Validate destination server
+        uses: your-org/postgres-db-fork@v1
+        with:
+          command: validate
+          dest-host: ${{ secrets.PREVIEW_DB_HOST }}
+          dest-user: ${{ secrets.PREVIEW_DB_USER }}
+          dest-password: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          check-resources: true
+          output-format: json
+
+  # Performance testing (optional)
+  performance-test:
+    if: github.event.action == 'opened' && contains(github.event.pull_request.labels.*.name, 'performance-test')
+    runs-on: ubuntu-latest
+    name: Performance Fork Test
+    needs: create-preview-db-action
+
+    steps:
+      - name: Large database fork test
+        uses: your-org/postgres-db-fork@v1
+        with:
+          command: fork
+          source-host: ${{ secrets.STAGING_DB_HOST }}
+          source-user: ${{ secrets.STAGING_DB_USER }}
+          source-password: ${{ secrets.STAGING_DB_PASSWORD }}
+          source-database: myapp_staging_large
+          dest-host: ${{ secrets.PREVIEW_DB_HOST }}
+          dest-user: ${{ secrets.PREVIEW_DB_USER }}
+          dest-password: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          target-database: "myapp_perf_{{.PR_NUMBER}}"
+          max-connections: 16
+          chunk-size: 5000
+          timeout: 60m
+          output-format: json
+
+      - name: Performance metrics
+        run: |
+          echo "## ⚡ Performance Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "Large database fork completed successfully" >> $GITHUB_STEP_SUMMARY

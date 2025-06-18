@@ -138,6 +138,137 @@ postgres-db-fork cleanup \
 
 ## GitHub Actions Integration
 
+### Using as a GitHub Action
+
+This repository can be used directly as a GitHub Action in your workflows:
+
+```yaml
+- name: Fork database for PR
+  uses: your-org/postgres-db-fork@v1
+  with:
+    command: fork
+    source-host: ${{ secrets.DB_HOST }}
+    source-user: ${{ secrets.DB_USER }}
+    source-password: ${{ secrets.DB_PASSWORD }}
+    source-database: myapp_staging
+    dest-host: ${{ secrets.PREVIEW_DB_HOST }}
+    dest-user: ${{ secrets.PREVIEW_DB_USER }}
+    dest-password: ${{ secrets.PREVIEW_DB_PASSWORD }}
+    target-database: "myapp_pr_{{.PR_NUMBER}}"
+    drop-if-exists: true
+    output-format: json
+  id: fork-db
+
+- name: Get database info
+  run: |
+    echo "Target database: ${{ steps.fork-db.outputs.target-database }}"
+    echo "Connection string: ${{ steps.fork-db.outputs.connection-string }}"
+```
+
+#### Action Inputs
+
+| Input | Description | Required | Default |
+|-------|-------------|----------|---------|
+| `command` | Command to run (fork, validate, cleanup, etc.) | Yes | `fork` |
+| `config-file` | Path to configuration file | No | |
+| `source-host` | Source database host | No | |
+| `source-port` | Source database port | No | `5432` |
+| `source-user` | Source database username | No | |
+| `source-password` | Source database password | No | |
+| `source-database` | Source database name | No | |
+| `dest-host` | Destination database host | No | |
+| `dest-user` | Destination database username | No | |
+| `dest-password` | Destination database password | No | |
+| `target-database` | Target database name (supports templates) | No | |
+| `drop-if-exists` | Drop target database if it exists | No | `false` |
+| `max-connections` | Maximum number of connections | No | `4` |
+| `timeout` | Operation timeout | No | `30m` |
+| `output-format` | Output format (text, json) | No | `text` |
+| `quiet` | Quiet mode | No | `false` |
+| `dry-run` | Dry run mode | No | `false` |
+
+#### Action Outputs
+
+| Output | Description |
+|--------|-------------|
+| `result` | Command execution result (success/failed) |
+| `target-database` | The actual target database name (after template processing) |
+| `connection-string` | Connection string for the target database |
+
+#### Template Variables
+
+The action automatically provides GitHub context variables:
+
+- `{{.PR_NUMBER}}` - Pull request number
+- `{{.BRANCH}}` - Branch name
+- `{{.COMMIT_SHA}}` - Full commit SHA
+- `{{.COMMIT_SHORT}}` - Short commit SHA (first 8 chars)
+- `{{.RUN_ID}}` - GitHub Actions run ID
+- `{{.RUN_NUMBER}}` - GitHub Actions run number
+
+#### Complete Workflow Example
+
+```yaml
+name: PR Database Management
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  pull_request_target:
+    types: [closed]
+
+jobs:
+  create-pr-database:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create PR preview database
+        uses: your-org/postgres-db-fork@v1
+        with:
+          command: fork
+          source-host: ${{ secrets.STAGING_DB_HOST }}
+          source-user: ${{ secrets.DB_USER }}
+          source-password: ${{ secrets.DB_PASSWORD }}
+          source-database: myapp_staging
+          dest-host: ${{ secrets.PREVIEW_DB_HOST }}
+          dest-user: ${{ secrets.PREVIEW_DB_USER }}
+          dest-password: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          target-database: "myapp_pr_{{.PR_NUMBER}}"
+          drop-if-exists: true
+          max-connections: 8
+          output-format: json
+        id: fork
+
+      - name: Comment on PR
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🗄️ Preview database created: \`${{ steps.fork.outputs.target-database }}\`
+
+              Connection string: \`${{ steps.fork.outputs.connection-string }}\``
+            })
+
+  cleanup-pr-database:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup PR database
+        uses: your-org/postgres-db-fork@v1
+        with:
+          command: cleanup
+          host: ${{ secrets.PREVIEW_DB_HOST }}
+          user: ${{ secrets.PREVIEW_DB_USER }}
+          password: ${{ secrets.PREVIEW_DB_PASSWORD }}
+          pattern: "myapp_pr_${{ github.event.number }}"
+          force: true
+```
+
+### Traditional CI/CD Integration
+
 See [`examples/github-actions.yml`](examples/github-actions.yml) for a complete workflow that:
 
 - Creates PR preview databases automatically
@@ -146,7 +277,7 @@ See [`examples/github-actions.yml`](examples/github-actions.yml) for a complete 
 - Cleans up databases when PRs are closed
 - Provides scheduled cleanup for orphaned databases
 
-Example workflow step:
+Example workflow step using the binary directly:
 
 ```yaml
 - name: Create PR preview database

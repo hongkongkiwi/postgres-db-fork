@@ -1,7 +1,9 @@
 # CI/CD Database Fork Configuration
 # This configuration enables automated PR preview databases
 
-# Source database (staging/production)
+# =====================================
+# SOURCE DATABASE CONFIGURATION
+# =====================================
 source:
   host: "${PGFORK_SOURCE_HOST}"
   port: 5432
@@ -10,7 +12,17 @@ source:
   database: "${PGFORK_SOURCE_DATABASE}"
   sslmode: require
 
-# Destination database server
+  # Optional SSL configuration
+  sslcert: "${PGFORK_SOURCE_SSLCERT:-}"
+  sslkey: "${PGFORK_SOURCE_SSLKEY:-}"
+
+  # Connection pool settings
+  max_connections: 16
+  connect_timeout: 30s
+
+# =====================================
+# DESTINATION DATABASE CONFIGURATION
+# =====================================
 destination:
   host: "${PGFORK_DEST_HOST}"
   port: 5432
@@ -18,33 +30,118 @@ destination:
   password: "${PGFORK_DEST_PASSWORD}"
   sslmode: require
 
+  # Resource management
+  max_connections: 8
+  statement_timeout: "30min"
+
+# =====================================
+# FORK CONFIGURATION
+# =====================================
 # Target database naming with templates
-target_database: "myapp_pr_{{.PR_NUMBER}}"
+target_database: "{{.APP_NAME}}_pr_{{.PR_NUMBER}}"
 
-# Fork settings
+# Core fork settings
 drop_if_exists: true
-max_connections: 4
-chunk_size: 1000
-timeout: 30m
+chunk_size: 5000
+timeout: 45m
+workers: 4
 
-# CI/CD specific settings
-output_format: json
-quiet: true
-dry_run: false
+# Performance optimizations
+include_schema_only: false
+parallel_mode: true
+disable_triggers: true
+vacuum_analyze: true
 
-# Template variables (can also be set via PGFORK_VAR_* environment variables)
-template_vars:
-  APP_NAME: "myapp"
-  ENVIRONMENT: "preview"
+# Progress tracking
+show_progress: true
+log_level: info
 
-# Performance optimizations for CI/CD
+# =====================================
+# DATA FILTERING
+# =====================================
+# Exclude large/sensitive tables from forks
 exclude_tables:
   - "audit_logs"           # Large audit tables
   - "performance_metrics"  # Time-series data
-  - "temp_*"              # Temporary tables
+  - "session_data"         # Temporary session storage
+  - "cache_*"              # Cache tables
+  - "temp_*"               # Temporary tables
+  - "logs_*"               # Log tables
 
-# Example environment variable configurations:
-#
+# Include only specific schemas
+include_schemas:
+  - "public"
+  - "api"
+  - "core"
+
+# Exclude specific schemas
+exclude_schemas:
+  - "analytics"
+  - "reporting"
+  - "audit"
+
+# Custom SQL filters for data subsets
+data_filters:
+  users: "created_at > NOW() - INTERVAL '6 months'"
+  orders: "status != 'cancelled' AND created_at > NOW() - INTERVAL '1 year'"
+
+# =====================================
+# CI/CD INTEGRATION
+# =====================================
+# Output and automation settings
+output_format: json
+quiet: false
+verbose: true
+dry_run: false
+
+# GitHub Actions integration
+github_actions: true
+create_deployment: true
+post_status_check: true
+
+# Template variables (GitHub context automatically injected)
+template_vars:
+  APP_NAME: "myapp"
+  ENVIRONMENT: "preview"
+  REGION: "us-east-1"
+
+# =====================================
+# VALIDATION CONFIGURATION
+# =====================================
+validation:
+  # Pre-fork validation
+  check_source_connectivity: true
+  check_dest_space: true
+  verify_permissions: true
+
+  # Post-fork validation
+  check_row_counts: true
+  verify_schemas: true
+  run_health_checks: true
+
+  # Performance validation
+  max_fork_time: 30m
+  min_success_rate: 95%
+
+# =====================================
+# MONITORING & OBSERVABILITY
+# =====================================
+monitoring:
+  enable_metrics: true
+  metrics_endpoint: "http://prometheus:9090/metrics"
+
+  # Alerting thresholds
+  alert_on_failure: true
+  alert_on_long_duration: 20m
+
+  # Logging
+  log_queries: false
+  log_performance: true
+  structured_logging: true
+
+# =====================================
+# ENVIRONMENT VARIABLES REFERENCE
+# =====================================
 # Required for source database:
 # PGFORK_SOURCE_HOST=staging-db.example.com
 # PGFORK_SOURCE_USER=readonly_user
@@ -60,14 +157,21 @@ exclude_tables:
 # PGFORK_VAR_PR_NUMBER=123
 # PGFORK_VAR_BRANCH=feature_new_api
 # PGFORK_VAR_COMMIT_SHORT=abc12345
+# PGFORK_VAR_COMMIT_SHA=abc123456789def
+# PGFORK_VAR_APP_NAME=myapp
+# PGFORK_VAR_ENVIRONMENT=preview
 #
 # CI/CD specific settings:
 # PGFORK_OUTPUT_FORMAT=json
-# PGFORK_QUIET=true
+# PGFORK_QUIET=false
+# PGFORK_VERBOSE=true
 # PGFORK_DROP_IF_EXISTS=true
+# PGFORK_GITHUB_ACTIONS=true
 
 ---
-# Example cleanup configuration
+# =====================================
+# CLEANUP CONFIGURATION
+# =====================================
 cleanup:
   # Database connection (usually same as destination)
   host: "${PGFORK_CLEANUP_HOST}"
@@ -76,40 +180,130 @@ cleanup:
   password: "${PGFORK_CLEANUP_PASSWORD}"
   sslmode: require
 
-  # Cleanup patterns
-  pattern: "myapp_pr_*"
-  older_than: "7d"  # Delete databases older than 7 days
+  # Cleanup patterns and rules
+  pattern: "{{.APP_NAME}}_pr_*"
+  older_than: "7d"
+
+  # Size-based cleanup
+  max_database_size: "10GB"
+  cleanup_large_dbs: true
 
   # Exclude important databases
   exclude:
-    - "myapp_pr_123"  # Keep specific PR database
-    - "myapp_staging"
-    - "myapp_production"
+    - "{{.APP_NAME}}_pr_123"  # Keep specific PR database
+    - "{{.APP_NAME}}_pr_main" # Keep main branch preview
+    - "*_production"          # Never touch production
+    - "*_staging"             # Never touch staging
+    - "*_backup"              # Keep backups
+
+  # Safety settings
+  dry_run: false
+  require_confirmation: false
+  force: false
+
+  # Backup before cleanup
+  create_backup: true
+  backup_retention: "30d"
 
   # Output settings
   output_format: json
-  quiet: true
+  quiet: false
+  verbose: true
 
-# Example cleanup environment variables:
+# Cleanup environment variables:
 # PGFORK_CLEANUP_HOST=preview-db.example.com
 # PGFORK_CLEANUP_USER=admin_user
 # PGFORK_CLEANUP_PASSWORD=admin_password # pragma: allowlist secret
-# PGFORK_CLEANUP_PATTERN=myapp_pr_*
+# PGFORK_CLEANUP_PATTERN={{.APP_NAME}}_pr_*
 # PGFORK_CLEANUP_OLDER_THAN=7d
 # PGFORK_CLEANUP_FORCE=false
+# PGFORK_CLEANUP_DRY_RUN=false
 
 ---
-# Example template naming patterns:
+# =====================================
+# ADVANCED TEMPLATE EXAMPLES
+# =====================================
 
-# PR-based databases:
-# "{{.APP_NAME}}_pr_{{.PR_NUMBER}}"              -> myapp_pr_123
-# "preview_{{.BRANCH}}_{{.COMMIT_SHORT}}"        -> preview_feature_api_abc12345
-# "{{.APP_NAME}}_{{.ENVIRONMENT}}_{{.PR_NUMBER}}" -> myapp_preview_123
+# PR-based naming patterns:
+pr_patterns:
+  simple: "{{.APP_NAME}}_pr_{{.PR_NUMBER}}"                    # myapp_pr_123
+  detailed: "{{.APP_NAME}}_pr_{{.PR_NUMBER}}_{{.COMMIT_SHORT}}" # myapp_pr_123_abc1234
+  env_aware: "{{.ENVIRONMENT}}_{{.APP_NAME}}_pr_{{.PR_NUMBER}}" # preview_myapp_pr_123
 
-# Branch-based databases:
-# "{{.APP_NAME}}_branch_{{.BRANCH}}"             -> myapp_branch_feature_api
-# "dev_{{.BRANCH}}_{{.COMMIT_SHORT}}"            -> dev_feature_api_abc12345
+# Branch-based naming patterns:
+branch_patterns:
+  simple: "{{.APP_NAME}}_branch_{{.BRANCH}}"                   # myapp_branch_feature_api
+  safe: "{{.APP_NAME}}_{{.BRANCH_SAFE}}_{{.COMMIT_SHORT}}"     # myapp_feature_api_abc1234
+  dated: "{{.APP_NAME}}_{{.BRANCH_SAFE}}_{{.DATE}}"            # myapp_feature_api_20241223
 
-# Time-based databases:
-# "{{.APP_NAME}}_test_{{.DATE}}"                 -> myapp_test_20241223
-# "temp_{{.TIMESTAMP}}"                          -> temp_1640234567
+# Environment-specific patterns:
+env_patterns:
+  dev: "dev_{{.APP_NAME}}_{{.BRANCH_SAFE}}"                    # dev_myapp_feature_api
+  staging: "staging_{{.APP_NAME}}_{{.VERSION}}"                # staging_myapp_v1_2_3
+  preview: "preview_{{.PR_NUMBER}}_{{.APP_NAME}}"              # preview_123_myapp
+
+# Time-based patterns:
+time_patterns:
+  daily: "{{.APP_NAME}}_daily_{{.DATE}}"                       # myapp_daily_20241223
+  hourly: "{{.APP_NAME}}_test_{{.DATETIME}}"                   # myapp_test_20241223_1430
+  timestamp: "temp_{{.APP_NAME}}_{{.TIMESTAMP}}"               # temp_myapp_1703347200
+
+# Feature flag patterns:
+feature_patterns:
+  experiment: "exp_{{.FEATURE_NAME}}_{{.PR_NUMBER}}"           # exp_new_checkout_123
+  ab_test: "ab_{{.TEST_NAME}}_{{.VARIANT}}_{{.PR_NUMBER}}"     # ab_homepage_control_123
+
+---
+# =====================================
+# SECURITY CONFIGURATION
+# =====================================
+security:
+  # Encryption settings
+  encrypt_in_transit: true
+  encrypt_at_rest: true
+
+  # Access control
+  require_ssl: true
+  verify_certificates: true
+
+  # Sensitive data handling
+  mask_sensitive_columns:
+    - "password"
+    - "email"
+    - "ssn"
+    - "credit_card"
+
+  # Audit logging
+  enable_audit_log: true
+  audit_sensitive_operations: true
+
+  # Network security
+  allowed_source_ips:
+    - "10.0.0.0/8"      # Internal network
+    - "172.16.0.0/12"   # Container network
+
+  whitelist_hosts:
+    - "*.example.com"
+    - "localhost"
+
+---
+# =====================================
+# DISASTER RECOVERY
+# =====================================
+disaster_recovery:
+  # Backup strategy
+  create_backup_before_fork: true
+  backup_retention_days: 30
+  backup_compression: true
+
+  # Recovery options
+  enable_point_in_time_recovery: true
+  wal_retention: "7d"
+
+  # Failover settings
+  auto_failover: false
+  failover_timeout: "5m"
+
+  # Health monitoring
+  health_check_interval: "30s"
+  max_failed_health_checks: 3

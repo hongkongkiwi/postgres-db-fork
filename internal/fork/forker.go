@@ -55,6 +55,13 @@ func (f *Forker) Fork(ctx context.Context) error {
 
 // forkSameServer handles same-server forking using PostgreSQL templates
 func (f *Forker) forkSameServer(ctx context.Context) error {
+	// If we need selective features (schema-only, table filtering), use cross-server method
+	// even on same server, as template-based cloning copies everything
+	if f.config.SchemaOnly || len(f.config.IncludeTables) > 0 || len(f.config.ExcludeTables) > 0 {
+		logrus.Info("Schema-only or table filtering requested, using selective transfer method")
+		return f.forkCrossServer(ctx)
+	}
+
 	// Connect to the destination server (using postgres database for admin operations)
 	adminConfig := f.config.Destination
 	adminConfig.Database = "postgres"

@@ -1,48 +1,243 @@
 # High-Performance PostgreSQL Database Fork Configuration
-# Optimized for maximum speed with large databases
+# Optimized for maximum speed with large databases (>100GB)
 
-# Source database configuration (READ-ONLY access required)
+# =====================================
+# SOURCE DATABASE CONFIGURATION
+# =====================================
 source:
   host: prod.example.com
   port: 5432
-  username: readonly_user  # Use a read-only user for safety
-  password: readonly_pass
+  username: readonly_user       # Use a read-only user for safety
+  password: readonly_pass # pragma: allowlist secret
   database: large_production_db
   sslmode: require
 
-# Destination database configuration
+  # High-performance connection settings
+  connect_timeout: 10s
+  application_name: postgres-fork-performance
+
+  # Connection pooling optimization
+  max_connections: 32           # Larger connection pool
+  connection_lifetime: 60m      # Keep connections alive longer
+
+# =====================================
+# DESTINATION DATABASE CONFIGURATION
+# =====================================
 destination:
   host: fast-dev.example.com
   port: 5432
   username: dev_admin
-  password: dev_admin_pass
+  password: dev_admin_pass # pragma: allowlist secret
   sslmode: prefer
 
-# Target database name
-target_database: performance_test_db
+  # Destination optimization
+  statement_timeout: 0          # Disable timeouts for large operations
+  max_connections: 200          # Ensure high connection limit
+  shared_preload_libraries: pg_stat_statements
 
-# Always drop and recreate for performance testing
+# =====================================
+# TARGET CONFIGURATION
+# =====================================
+# Target database name with performance testing identifier
+target_database: perf_test_{{.TIMESTAMP}}
+
+# Always drop and recreate for consistent performance testing
 drop_if_exists: true
 
-# High-performance settings
-max_connections: 16       # Higher parallelism for fast networks
-chunk_size: 10000        # Larger chunks for better throughput
-timeout: 2h              # Extended timeout for large databases
+# Database creation with performance-optimized settings
+database_options:
+  owner: dev_admin
+  encoding: UTF8
+  locale: C                     # C locale for best performance
+  template: template0
 
-# Exclude large audit/log tables that aren't needed for development
+# =====================================
+# MAXIMUM PERFORMANCE SETTINGS
+# =====================================
+# Parallel processing configuration
+workers: 8                     # Maximum parallel workers
+max_connections: 16            # Connections per worker
+parallel_mode: true            # Enable all parallel features
+
+# Chunk size optimization for large datasets
+chunk_size: 50000              # Very large chunks for bulk transfer
+transaction_size: 100000       # Large transaction batches
+
+# Memory optimization
+memory_limit: 8GB              # Use significant memory for performance
+work_mem: 1GB                  # Large work memory for sorting/hashing
+maintenance_work_mem: 2GB      # Large maintenance work memory
+
+# Network optimization
+tcp_keepalives_idle: 600
+tcp_keepalives_interval: 30
+tcp_keepalives_count: 3
+
+# =====================================
+# SPEED OPTIMIZATIONS
+# =====================================
+# Disable safety features for maximum speed
+disable_triggers: true         # Disable all triggers
+defer_constraints: true        # Defer constraint checking
+vacuum_analyze: false          # Skip post-transfer maintenance
+reset_sequences: false         # Skip sequence reset for speed
+
+# Transaction optimization
+use_transactions: false        # Disable transactions for speed (risky!)
+fsync: false                   # Disable fsync (data loss risk!)
+synchronous_commit: off        # Async commits
+
+# WAL optimization
+wal_level: minimal
+wal_buffers: 64MB
+checkpoint_segments: 256
+checkpoint_completion_target: 0.9
+
+# =====================================
+# DATA FILTERING FOR PERFORMANCE
+# =====================================
+# Exclude massive tables that slow down development
 exclude_tables:
-  - audit_logs
-  - access_logs
-  - user_sessions
-  - temp_data
-  - analytics_events
-  - system_logs
-  - backup_tables
+  - audit_logs                 # Massive audit tables
+  - access_logs                # Web server logs
+  - user_sessions              # Temporary session data
+  - temp_*                     # All temporary tables
+  - analytics_*                # Analytics data
+  - system_logs                # System log tables
+  - backup_*                   # Backup tables
+  - archive_*                  # Archived data
+  - metrics_*                  # Time-series metrics
+  - events_*                   # Event tracking
+  - notifications_*            # Notification history
 
-# Transfer configuration optimized for speed
-schema_only: false       # Transfer both schema and data
-data_only: false
+# Schema filtering for performance
+exclude_schemas:
+  - analytics                  # Analytics schema
+  - reporting                  # Reporting schema
+  - audit                      # Audit schema
+  - logs                       # Logs schema
+  - archive                    # Archive schema
 
-# Logging - use info level to avoid debug overhead
-log_level: info
-verbose: false
+# Data subset filters for development
+data_filters:
+  users: "created_at > NOW() - INTERVAL '1 year'"                    # Recent users only
+  orders: "status = 'active' AND created_at > NOW() - INTERVAL '6 months'"
+  products: "status = 'active' AND discontinued = false"
+  transactions: "created_at > NOW() - INTERVAL '3 months'"
+
+# =====================================
+# MONITORING & BENCHMARKING
+# =====================================
+# Enable performance tracking
+track_performance: true
+track_memory_usage: true
+enable_metrics: true
+metrics_port: 9090
+
+# Detailed progress reporting
+show_progress: true
+progress_interval: 10s         # Frequent progress updates
+verbose_progress: true
+
+# Benchmarking output
+output_format: json            # Structured output for analysis
+structured_logging: true
+
+# Performance logging
+log_file: /var/log/postgres-fork-performance.log
+log_performance_stats: true
+log_memory_stats: true
+log_network_stats: true
+
+# =====================================
+# VALIDATION & SAFETY
+# =====================================
+# Minimal validation for speed
+validate_source: true          # Basic source validation
+validate_destination: false    # Skip destination validation
+check_permissions: false       # Skip permission checks
+check_disk_space: true         # Only check disk space
+
+# Post-transfer validation
+validate_transfer: false       # Skip row count validation
+check_row_counts: false        # Skip row count checks
+verify_data_integrity: false   # Skip integrity checks
+
+# =====================================
+# ADVANCED PERFORMANCE FEATURES
+# =====================================
+# Large object handling
+include_large_objects: false   # Skip BLOBs for speed
+
+# Index management
+rebuild_indexes: false         # Skip index rebuilding
+analyze_tables: false          # Skip table analysis
+
+# Compression settings
+use_compression: false         # Disable compression for speed
+compression_level: 0
+
+# =====================================
+# BENCHMARKING CONFIGURATION
+# =====================================
+# Enable detailed benchmarking
+benchmark_mode: true
+benchmark_output: /tmp/fork-benchmark.json
+
+# Timing measurements
+measure_schema_time: true
+measure_data_time: true
+measure_index_time: true
+measure_constraint_time: true
+
+# Resource monitoring during transfer
+monitor_cpu_usage: true
+monitor_memory_usage: true
+monitor_disk_io: true
+monitor_network_io: true
+
+# =====================================
+# SAFETY WARNINGS
+# =====================================
+# WARNING: This configuration prioritizes speed over safety!
+# - Transactions are disabled (data loss risk)
+# - Fsync is disabled (crash recovery risk)
+# - Many validations are skipped
+# - Should ONLY be used for performance testing or disposable data
+#
+# For production use, enable:
+# - use_transactions: true
+# - fsync: true
+# - synchronous_commit: on
+# - Full validation options
+
+# =====================================
+# EXPECTED PERFORMANCE
+# =====================================
+# With this configuration on modern hardware:
+# - Small databases (<1GB): 30-60 seconds
+# - Medium databases (1-10GB): 2-10 minutes
+# - Large databases (10-100GB): 15-60 minutes
+# - Very large databases (>100GB): 1-6 hours
+#
+# Performance varies based on:
+# - Network bandwidth between source/destination
+# - Disk I/O speed (SSD recommended)
+# - CPU cores available
+# - Memory available
+# - Database complexity (indexes, constraints)
+
+# =====================================
+# LOGGING CONFIGURATION
+# =====================================
+log_level: warn                # Reduce logging overhead
+quiet: false                   # Keep some output for monitoring
+verbose: false                 # Disable verbose logging
+
+# Error handling for performance
+continue_on_error: true        # Don't stop on non-critical errors
+max_retries: 1                 # Minimal retries for speed
+retry_delay: 1s                # Fast retry delays
+
+# Extended timeout for very large databases
+timeout: 6h                    # Extended timeout for massive datasets

@@ -75,43 +75,91 @@ func (c *Connection) CreateDatabase(targetDB, sourceDB string, dropIfExists bool
 		}
 	}
 
-	query := fmt.Sprintf(
-		"CREATE DATABASE %s WITH TEMPLATE %s",
-		pq.QuoteIdentifier(targetDB),
-		pq.QuoteIdentifier(sourceDB),
-	)
+	// Retry logic for database creation (handle concurrent access to source database)
+	maxRetries := 5
+	retryDelay := time.Millisecond * 500
 
-	_, err := c.DB.Exec(query)
-	if err != nil {
-		return fmt.Errorf("failed to create database %s: %w", targetDB, err)
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			logrus.Debugf("Retry attempt %d/%d for creating database %s", attempt, maxRetries, targetDB)
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // exponential backoff
+		}
+
+		query := fmt.Sprintf(
+			"CREATE DATABASE %s WITH TEMPLATE %s",
+			pq.QuoteIdentifier(targetDB),
+			pq.QuoteIdentifier(sourceDB),
+		)
+
+		_, err := c.DB.Exec(query)
+		if err != nil {
+			// Check if it's a "being accessed by other users" error
+			if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "55006" {
+				if attempt < maxRetries {
+					logrus.Debugf("Source database %s is being accessed by other users, retrying... (attempt %d/%d)", sourceDB, attempt, maxRetries)
+					continue
+				}
+			}
+			return fmt.Errorf("failed to create database %s after %d attempts: %w", targetDB, maxRetries, err)
+		}
+
+		logrus.Infof("Created database %s using template %s", targetDB, sourceDB)
+		return nil
 	}
 
-	logrus.Infof("Created database %s using template %s", targetDB, sourceDB)
-	return nil
+	return fmt.Errorf("failed to create database %s after %d attempts: max retries exceeded", targetDB, maxRetries)
 }
 
 // DropDatabase drops a database if it exists
 func (c *Connection) DropDatabase(dbName string) error {
-	// First, terminate all connections to the database
-	terminateQuery := `
-		SELECT pg_terminate_backend(pid)
-		FROM pg_stat_activity
-		WHERE datname = $1 AND pid <> pg_backend_pid()`
+	// Retry logic for database drops (handle concurrent connections)
+	maxRetries := 5
+	retryDelay := time.Millisecond * 500
 
-	_, err := c.DB.Exec(terminateQuery, dbName)
-	if err != nil {
-		logrus.WithError(err).Warnf("Could not terminate connections to database %s", dbName)
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			logrus.Debugf("Retry attempt %d/%d for dropping database %s", attempt, maxRetries, dbName)
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // exponential backoff
+		}
+
+		// First, terminate all connections to the database
+		terminateQuery := `
+			SELECT pg_terminate_backend(pid)
+			FROM pg_stat_activity
+			WHERE datname = $1 AND pid <> pg_backend_pid() AND state = 'active'`
+
+		result, err := c.DB.Exec(terminateQuery, dbName)
+		if err != nil {
+			logrus.WithError(err).Debugf("Could not terminate connections to database %s (attempt %d)", dbName, attempt)
+		} else {
+			if rowsAffected, _ := result.RowsAffected(); rowsAffected > 0 {
+				logrus.Debugf("Terminated %d connections to database %s", rowsAffected, dbName)
+				// Give a moment for connections to actually terminate
+				time.Sleep(time.Millisecond * 100)
+			}
+		}
+
+		// Try to drop the database
+		query := fmt.Sprintf("DROP DATABASE IF EXISTS %s", pq.QuoteIdentifier(dbName))
+		_, err = c.DB.Exec(query)
+		if err != nil {
+			// Check if it's a "being accessed by other users" error
+			if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "55006" {
+				if attempt < maxRetries {
+					logrus.Debugf("Database %s is being accessed by other users, retrying... (attempt %d/%d)", dbName, attempt, maxRetries)
+					continue
+				}
+			}
+			return fmt.Errorf("failed to drop database %s after %d attempts: %w", dbName, maxRetries, err)
+		}
+
+		logrus.Infof("Dropped database %s", dbName)
+		return nil
 	}
 
-	// Drop the database
-	query := fmt.Sprintf("DROP DATABASE IF EXISTS %s", pq.QuoteIdentifier(dbName))
-	_, err = c.DB.Exec(query)
-	if err != nil {
-		return fmt.Errorf("failed to drop database %s: %w", dbName, err)
-	}
-
-	logrus.Infof("Dropped database %s", dbName)
-	return nil
+	return fmt.Errorf("failed to drop database %s after %d attempts: max retries exceeded", dbName, maxRetries)
 }
 
 // GetDatabaseSize returns the size of a database in bytes

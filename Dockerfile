@@ -26,11 +26,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # Runtime stage
 FROM alpine:3.19
 
-# Install runtime dependencies
+# Install runtime dependencies including jq for JSON parsing
 RUN apk add --no-cache \
     ca-certificates \
     postgresql-client \
     tzdata \
+    jq \
     && rm -rf /var/cache/apk/*
 
 # Create non-root user
@@ -43,8 +44,11 @@ WORKDIR /app
 # Copy binary from builder stage
 COPY --from=builder /app/postgres-db-fork /usr/local/bin/postgres-db-fork
 
-# Make binary executable
-RUN chmod +x /usr/local/bin/postgres-db-fork
+# Copy entrypoint script
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+
+# Make scripts executable
+RUN chmod +x /usr/local/bin/postgres-db-fork /usr/local/bin/entrypoint.sh
 
 # Create directories with proper permissions
 RUN mkdir -p /app/config /app/logs && \
@@ -61,8 +65,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD postgres-db-fork --version || exit 1
 
 # Default command
-ENTRYPOINT ["postgres-db-fork"]
-CMD ["--help"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["fork"]
 
 # Labels
 LABEL maintainer="postgres-db-fork"

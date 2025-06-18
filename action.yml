@@ -1,0 +1,161 @@
+name: 'PostgreSQL Database Fork'
+description: 'Fork PostgreSQL databases for CI/CD environments'
+author: 'Your Name'
+
+branding:
+  icon: 'database'
+  color: 'blue'
+
+inputs:
+  command:
+    description: 'Command to run (fork, validate, test-connection, cleanup, etc.)'
+    required: true
+    default: 'fork'
+
+  config-file:
+    description: 'Path to configuration file'
+    required: false
+
+  source-host:
+    description: 'Source database host'
+    required: false
+
+  source-port:
+    description: 'Source database port'
+    required: false
+    default: '5432'
+
+  source-user:
+    description: 'Source database username'
+    required: false
+
+  source-password:
+    description: 'Source database password'
+    required: false
+
+  source-database:
+    description: 'Source database name'
+    required: false
+
+  source-sslmode:
+    description: 'Source database SSL mode'
+    required: false
+    default: 'prefer'
+
+  dest-host:
+    description: 'Destination database host'
+    required: false
+
+  dest-port:
+    description: 'Destination database port'
+    required: false
+    default: '5432'
+
+  dest-user:
+    description: 'Destination database username'
+    required: false
+
+  dest-password:
+    description: 'Destination database password'
+    required: false
+
+  dest-sslmode:
+    description: 'Destination database SSL mode'
+    required: false
+    default: 'prefer'
+
+  target-database:
+    description: 'Target database name (supports templates like myapp_pr_{{.PR_NUMBER}})'
+    required: false
+
+  drop-if-exists:
+    description: 'Drop target database if it exists'
+    required: false
+    default: 'false'
+
+  max-connections:
+    description: 'Maximum number of connections'
+    required: false
+    default: '4'
+
+  chunk-size:
+    description: 'Chunk size for data transfer'
+    required: false
+    default: '1000'
+
+  timeout:
+    description: 'Operation timeout (e.g., 30m, 1h)'
+    required: false
+    default: '30m'
+
+  output-format:
+    description: 'Output format (text, json)'
+    required: false
+    default: 'text'
+
+  quiet:
+    description: 'Quiet mode'
+    required: false
+    default: 'false'
+
+  dry-run:
+    description: 'Dry run mode'
+    required: false
+    default: 'false'
+
+  template-vars:
+    description: 'Template variables in JSON format (e.g., {"PR_NUMBER":"123","BRANCH":"main"})'
+    required: false
+
+outputs:
+  result:
+    description: 'Command execution result'
+
+  target-database:
+    description: 'The actual target database name (after template processing)'
+
+  connection-string:
+    description: 'Connection string for the target database'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.command }}
+  env:
+    # Source database configuration
+    PGFORK_SOURCE_HOST: ${{ inputs.source-host }}
+    PGFORK_SOURCE_PORT: ${{ inputs.source-port }}
+    PGFORK_SOURCE_USER: ${{ inputs.source-user }}
+    PGFORK_SOURCE_PASSWORD: ${{ inputs.source-password }}
+    PGFORK_SOURCE_DATABASE: ${{ inputs.source-database }}
+    PGFORK_SOURCE_SSLMODE: ${{ inputs.source-sslmode }}
+
+    # Destination database configuration
+    PGFORK_DEST_HOST: ${{ inputs.dest-host }}
+    PGFORK_DEST_PORT: ${{ inputs.dest-port }}
+    PGFORK_DEST_USER: ${{ inputs.dest-user }}
+    PGFORK_DEST_PASSWORD: ${{ inputs.dest-password }}
+    PGFORK_DEST_SSLMODE: ${{ inputs.dest-sslmode }}
+
+    # Fork configuration
+    PGFORK_TARGET_DATABASE: ${{ inputs.target-database }}
+    PGFORK_DROP_IF_EXISTS: ${{ inputs.drop-if-exists }}
+    PGFORK_MAX_CONNECTIONS: ${{ inputs.max-connections }}
+    PGFORK_CHUNK_SIZE: ${{ inputs.chunk-size }}
+    PGFORK_TIMEOUT: ${{ inputs.timeout }}
+    PGFORK_OUTPUT_FORMAT: ${{ inputs.output-format }}
+    PGFORK_QUIET: ${{ inputs.quiet }}
+    PGFORK_DRY_RUN: ${{ inputs.dry-run }}
+
+    # Additional configuration
+    CONFIG_FILE: ${{ inputs.config-file }}
+    TEMPLATE_VARS: ${{ inputs.template-vars }}
+
+    # GitHub context
+    PGFORK_VAR_PR_NUMBER: ${{ github.event.number }}
+    PGFORK_VAR_BRANCH: ${{ github.head_ref || github.ref_name }}
+    PGFORK_VAR_COMMIT_SHA: ${{ github.sha }}
+    PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
+    PGFORK_VAR_RUN_ID: ${{ github.run_id }}
+    PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}

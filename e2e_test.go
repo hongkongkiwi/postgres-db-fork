@@ -339,6 +339,38 @@ func testCrossServerMigration(t *testing.T, sourceEnv *TestEnvironment, sourceDB
 func testLargeDatasetFork(t *testing.T, sourceEnv *TestEnvironment, sourceDB string) {
 	largeDatasetDB := "large_dataset_copy"
 
+	// Create additional large dataset in the source DB for this specific test
+	conn := sourceEnv.CreateConnection(t, sourceDB)
+	// Create a large events table
+	_, err := conn.DB.Exec(`
+		CREATE TABLE events (
+			id SERIAL PRIMARY KEY,
+			event_type VARCHAR(50),
+			user_id INTEGER,
+			data JSONB,
+			created_at TIMESTAMP DEFAULT NOW()
+		);
+		CREATE INDEX idx_events_type ON events(event_type);
+		CREATE INDEX idx_events_created_at ON events(created_at);
+	`)
+	require.NoError(t, err)
+
+	// Insert large dataset (simulate production volume)
+	for i := 1; i <= 2000; i++ {
+		_, err := conn.DB.Exec(`
+			INSERT INTO events (event_type, user_id, data)
+			VALUES ($1, $2, $3)
+		`,
+			[]string{"login", "logout", "purchase", "view", "click"}[i%5],
+			(i%100)+1,
+			fmt.Sprintf(`{"timestamp": "%d", "session_id": "sess_%d"}`, i, i),
+		)
+		require.NoError(t, err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Logf("Failed to close connection after data insertion: %v", err)
+	}
+
 	// Disconnect any active connections to the source database before using it as a template
 	disconnectAllUsers(t, sourceEnv, sourceDB)
 
@@ -353,7 +385,7 @@ func testLargeDatasetFork(t *testing.T, sourceEnv *TestEnvironment, sourceDB str
 	}
 
 	forker := fork.NewForker(cfg)
-	err := forker.Fork(context.Background())
+	err = forker.Fork(context.Background())
 	require.NoError(t, err)
 
 	// Verify large dataset was copied correctly

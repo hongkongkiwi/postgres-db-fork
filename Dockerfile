@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     main.go
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.22
 
 # Install runtime dependencies including jq for JSON parsing
 RUN apk add --no-cache \

@@ -69,8 +69,14 @@ run_e2e_tests() {
     export POSTGRES_E2E_TEST=true
     export DOCKER_API_VERSION=1.40
 
-    # Run the tests with verbose output
-    if go test -v -tags=e2e ./... -timeout=30m; then
+    # Run the tests with verbose output and test-by-test timing
+    if go test -v -tags=e2e ./... -timeout=30m | while IFS= read -r line; do
+        if [[ "$line" == "=== RUN"* ]]; then
+            printf "[%s] %s\\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$line"
+        else
+            echo "$line"
+        fi
+    done; then
         print_success "All E2E tests passed!"
         return 0
     else
@@ -83,7 +89,13 @@ run_e2e_tests() {
 generate_coverage() {
     print_info "Generating coverage report for E2E tests..."
 
-    go test -v -tags=e2e -coverprofile=coverage-e2e.out ./... -timeout=30m
+    go test -v -tags=e2e -coverprofile=coverage-e2e.out ./... -timeout=30m | while IFS= read -r line; do
+        if [[ "$line" == "=== RUN"* ]]; then
+            printf "[%s] %s\\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$line"
+        else
+            echo "$line"
+        fi
+    done
     go tool cover -html=coverage-e2e.out -o coverage-e2e.html
     go tool cover -func=coverage-e2e.out
 

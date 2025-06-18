@@ -1,0 +1,53 @@
+# PostgreSQL Database Fork Configuration
+# This is a sample configuration file showing all available options
+
+# Source database configuration
+source:
+  host: prod.example.com
+  port: 5432
+  username: produser
+  password: prodpass
+  database: myapp_production
+  sslmode: require
+
+# Destination database configuration
+# If not specified, defaults to source values
+destination:
+  host: dev.example.com
+  port: 5432
+  username: devuser
+  password: devpass
+  sslmode: prefer
+
+# Target database name (required)
+target_database: myapp_development
+
+# Drop target database if it already exists
+drop_if_exists: true
+
+# Performance settings
+max_connections: 8        # Number of parallel connections for data transfer
+chunk_size: 2000         # Number of rows to transfer in each batch
+timeout: 45m             # Maximum time for the entire operation
+
+# Table filtering (optional)
+exclude_tables:
+  - audit_logs
+  - temp_data
+  - session_data
+  - user_sessions
+
+# Alternative: only include specific tables
+# include_tables:
+#   - users
+#   - products
+#   - orders
+#   - customers
+
+# Transfer mode options (optional)
+# schema_only: false     # Transfer only database schema, no data
+# data_only: false       # Transfer only data, no schema
+
+# Logging configuration
+log_level: info          # debug, info, warn, error
+verbose: false 

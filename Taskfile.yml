@@ -1,0 +1,116 @@
+# PostgreSQL Database Fork Tool Taskfile
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  BINARY_NAME: postgres-db-fork
+  BUILD_DIR: bin
+  MAIN_FILE: main.go
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  deps:
+    desc: Install dependencies
+    cmds:
+      - go mod tidy
+      - go mod download
+
+  build:
+    desc: Build the binary
+    deps: [deps]
+    generates:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}}"
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}} {{.MAIN_FILE}}
+
+  build-all:
+    desc: Build for multiple platforms
+    deps: [deps]
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - GOOS=linux GOARCH=amd64 go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-linux-amd64 {{.MAIN_FILE}}
+      - GOOS=darwin GOARCH=amd64 go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-darwin-amd64 {{.MAIN_FILE}}
+      - GOOS=darwin GOARCH=arm64 go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-darwin-arm64 {{.MAIN_FILE}}
+      - GOOS=windows GOARCH=amd64 go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-windows-amd64.exe {{.MAIN_FILE}}
+
+  fmt:
+    desc: Format Go code
+    cmds:
+      - go fmt ./...
+
+  lint:
+    desc: Lint Go code
+    cmds:
+      - golangci-lint run
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v ./...
+
+  test-coverage:
+    desc: Run tests with coverage
+    cmds:
+      - go test -v -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
+
+  install:
+    desc: Install binary to GOBIN
+    deps: [build]
+    cmds:
+      - go install
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+      - rm -f coverage.out coverage.html
+
+  example:
+    desc: Run example fork operation
+    deps: [build]
+    cmds:
+      - ./{{.BUILD_DIR}}/{{.BINARY_NAME}} fork --config examples/config.yaml --log-level debug
+
+  dev:
+    desc: Development mode with file watching
+    cmds:
+      - |
+        if ! command -v air &> /dev/null; then
+          go install github.com/cosmtrek/air@latest
+        fi
+        air
+
+  run:
+    desc: Run the application with arguments
+    deps: [build]
+    cmds:
+      - ./{{.BUILD_DIR}}/{{.BINARY_NAME}} {{.CLI_ARGS}}
+
+  check:
+    desc: Run all checks (fmt, lint, test)
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: test
+
+  release:
+    desc: Build release binaries for all platforms
+    deps: [clean, check]
+    cmds:
+      - task: build-all
+      - echo "Release binaries built in {{.BUILD_DIR}}/"
+
+  help-usage:
+    desc: Show tool usage help
+    deps: [build]
+    cmds:
+      - ./{{.BUILD_DIR}}/{{.BINARY_NAME}} --help
+      - echo ""
+      - ./{{.BUILD_DIR}}/{{.BINARY_NAME}} fork --help 

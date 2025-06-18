@@ -1,0 +1,48 @@
+# High-Performance PostgreSQL Database Fork Configuration
+# Optimized for maximum speed with large databases
+
+# Source database configuration (READ-ONLY access required)
+source:
+  host: prod.example.com
+  port: 5432
+  username: readonly_user  # Use a read-only user for safety
+  password: readonly_pass
+  database: large_production_db
+  sslmode: require
+
+# Destination database configuration
+destination:
+  host: fast-dev.example.com
+  port: 5432
+  username: dev_admin
+  password: dev_admin_pass
+  sslmode: prefer
+
+# Target database name
+target_database: performance_test_db
+
+# Always drop and recreate for performance testing
+drop_if_exists: true
+
+# High-performance settings
+max_connections: 16       # Higher parallelism for fast networks
+chunk_size: 10000        # Larger chunks for better throughput
+timeout: 2h              # Extended timeout for large databases
+
+# Exclude large audit/log tables that aren't needed for development
+exclude_tables:
+  - audit_logs
+  - access_logs
+  - user_sessions
+  - temp_data
+  - analytics_events
+  - system_logs
+  - backup_tables
+
+# Transfer configuration optimized for speed
+schema_only: false       # Transfer both schema and data
+data_only: false
+
+# Logging - use info level to avoid debug overhead
+log_level: info
+verbose: false 

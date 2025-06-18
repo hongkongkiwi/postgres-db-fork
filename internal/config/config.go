@@ -266,7 +266,17 @@ func (c *ForkConfig) Validate() error {
 	if c.Source.Database == c.TargetDatabase && c.IsSameServer() {
 		return fmt.Errorf("source and target databases cannot be the same")
 	}
-	if c.MaxConnections <= 0 {
+
+	// Validate conflicting options
+	if c.SchemaOnly && c.DataOnly {
+		return fmt.Errorf("cannot specify both schema-only and data-only options")
+	}
+
+	// Validate max connections
+	if c.MaxConnections < 0 {
+		return fmt.Errorf("max connections must be greater than 0")
+	}
+	if c.MaxConnections == 0 {
 		c.MaxConnections = 4
 	}
 	if c.ChunkSize <= 0 {

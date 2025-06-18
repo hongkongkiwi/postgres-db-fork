@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"postgres-db-fork/internal/config"
-	"postgres-db-fork/internal/db"
+	"github.com/hongkongkiwi/postgres-db-fork/internal/config"
+	"github.com/hongkongkiwi/postgres-db-fork/internal/db"
 
 	"github.com/lib/pq"
 	"github.com/sirupsen/logrus"
@@ -219,23 +219,40 @@ func (dtm *DataTransferManager) copyTableData(ctx context.Context, tableName str
 	if err != nil {
 		return fmt.Errorf("failed to begin destination transaction: %w", err)
 	}
-	defer destTx.Rollback()
+	defer func() {
+		if err := destTx.Rollback(); err != nil {
+			// Transaction might already be committed/rolled back, this is expected
+			logrus.Debugf("Transaction rollback completed: %v", err)
+		}
+	}()
 
 	// Prepare COPY FROM statement
 	stmt, err := destTx.PrepareContext(ctx, copySQL)
 	if err != nil {
 		return fmt.Errorf("failed to prepare COPY statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() {
+		if err := stmt.Close(); err != nil {
+			logrus.Warnf("Failed to close prepared statement: %v", err)
+		}
+	}()
 
 	// Create a pipe for streaming data
 	pipeReader, pipeWriter := io.Pipe()
-	defer pipeReader.Close()
+	defer func() {
+		if err := pipeReader.Close(); err != nil {
+			logrus.Warnf("Failed to close pipe reader: %v", err)
+		}
+	}()
 
 	// Start the COPY operation in a goroutine
 	copyErrChan := make(chan error, 1)
 	go func() {
-		defer pipeWriter.Close()
+		defer func() {
+			if err := pipeWriter.Close(); err != nil {
+				logrus.Warnf("Failed to close pipe writer in goroutine: %v", err)
+			}
+		}()
 		_, err := stmt.ExecContext(ctx, pipeReader)
 		copyErrChan <- err
 	}()
@@ -246,10 +263,16 @@ func (dtm *DataTransferManager) copyTableData(ctx context.Context, tableName str
 
 	rows, err := dtm.source.DB.QueryContext(ctx, sourceCopySQL)
 	if err != nil {
-		pipeWriter.Close()
+		if err := pipeWriter.Close(); err != nil {
+			logrus.Warnf("Failed to close pipe writer: %v", err)
+		}
 		return fmt.Errorf("failed to start source COPY: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logrus.Warnf("Failed to close rows: %v", err)
+		}
+	}()
 
 	// Stream data through the pipe
 	var transferredRows int64
@@ -276,7 +299,9 @@ func (dtm *DataTransferManager) copyTableData(ctx context.Context, tableName str
 	}
 
 	// Close the writer to signal end of data
-	pipeWriter.Close()
+	if err := pipeWriter.Close(); err != nil {
+		logrus.Warnf("Failed to close pipe writer: %v", err)
+	}
 
 	// Wait for COPY operation to complete
 	if err := <-copyErrChan; err != nil {
@@ -295,8 +320,8 @@ func (dtm *DataTransferManager) copyTableData(ctx context.Context, tableName str
 // getTableColumns returns the column names for a table in the correct order
 func (dtm *DataTransferManager) getTableColumns(tableName string) ([]string, error) {
 	query := `
-		SELECT column_name 
-		FROM information_schema.columns 
+		SELECT column_name
+		FROM information_schema.columns
 		WHERE table_name = $1 AND table_schema = 'public'
 		ORDER BY ordinal_position`
 
@@ -304,7 +329,11 @@ func (dtm *DataTransferManager) getTableColumns(tableName string) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logrus.Warnf("Failed to close table columns query rows: %v", err)
+		}
+	}()
 
 	var columns []string
 	for rows.Next() {
@@ -351,12 +380,12 @@ func (dtm *DataTransferManager) getCompleteSchemaSQL() ([]string, error) {
 // getTableDefinitions gets complete table definitions
 func (dtm *DataTransferManager) getTableDefinitions() ([]string, error) {
 	query := `
-		SELECT 
+		SELECT
 			'CREATE TABLE ' || quote_ident(schemaname) || '.' || quote_ident(tablename) || ' (' ||
 			array_to_string(
 				array_agg(
-					quote_ident(column_name) || ' ' || 
-					CASE 
+					quote_ident(column_name) || ' ' ||
+					CASE
 						WHEN data_type = 'character varying' THEN 'varchar(' || character_maximum_length || ')'
 						WHEN data_type = 'character' THEN 'char(' || character_maximum_length || ')'
 						WHEN data_type = 'numeric' THEN 'numeric(' || numeric_precision || ',' || numeric_scale || ')'
@@ -365,7 +394,7 @@ func (dtm *DataTransferManager) getTableDefinitions() ([]string, error) {
 					CASE WHEN is_nullable = 'NO' THEN ' NOT NULL' ELSE '' END ||
 					CASE WHEN column_default IS NOT NULL THEN ' DEFAULT ' || column_default ELSE '' END
 					ORDER BY ordinal_position
-				), 
+				),
 				', '
 			) ||
 			');' as create_table_sql
@@ -378,7 +407,11 @@ func (dtm *DataTransferManager) getTableDefinitions() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logrus.Warnf("Failed to close table definitions query rows: %v", err)
+		}
+	}()
 
 	var schemas []string
 	for rows.Next() {
@@ -395,16 +428,20 @@ func (dtm *DataTransferManager) getTableDefinitions() ([]string, error) {
 // getIndexDefinitions gets index creation statements
 func (dtm *DataTransferManager) getIndexDefinitions() ([]string, error) {
 	query := `
-		SELECT indexdef 
-		FROM pg_indexes 
-		WHERE schemaname = 'public' 
+		SELECT indexdef
+		FROM pg_indexes
+		WHERE schemaname = 'public'
 		  AND indexname NOT LIKE '%_pkey'`
 
 	rows, err := dtm.source.DB.Query(query)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logrus.Warnf("Failed to close index definitions query rows: %v", err)
+		}
+	}()
 
 	var indexes []string
 	for rows.Next() {
@@ -440,7 +477,11 @@ func (dtm *DataTransferManager) getForeignKeyDefinitions() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logrus.Warnf("Failed to close foreign key definitions query rows: %v", err)
+		}
+	}()
 
 	var constraints []string
 	for rows.Next() {

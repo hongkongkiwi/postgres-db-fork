@@ -40,25 +40,142 @@ tasks:
       - GOOS=windows GOARCH=amd64 go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-windows-amd64.exe {{.MAIN_FILE}}
 
   fmt:
-    desc: Format Go code
+    desc: "Format code"
     cmds:
       - go fmt ./...
 
   lint:
-    desc: Lint Go code
+    desc: "Run all linting checks"
+    deps: [lint-go, lint-yaml, lint-actions]
     cmds:
-      - golangci-lint run
+      - echo "✅ All linting checks passed!"
+
+  lint-go:
+    desc: "Run Go linting with golangci-lint"
+    cmds:
+      - golangci-lint run ./...
+
+  lint-yaml:
+    desc: "Run YAML linting"
+    cmds:
+      - yamllint .github/workflows/
+
+  lint-actions:
+    desc: "Lint GitHub Actions workflows with actionlint"
+    cmds:
+      - |
+        if ! command -v actionlint &> /dev/null; then
+          echo "Installing actionlint..."
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            if command -v brew &> /dev/null; then
+              brew install actionlint
+            else
+              echo "Please install actionlint manually: https://github.com/rhymond/actionlint#installation"
+              exit 1
+            fi
+          elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            bash <(curl https://raw.githubusercontent.com/rhymond/actionlint/main/scripts/download-actionlint.bash)
+          else
+            echo "Please install actionlint manually: https://github.com/rhymond/actionlint#installation"
+            exit 1
+          fi
+        fi
+      - actionlint
 
   test:
-    desc: Run tests
+    desc: Run unit tests only
     cmds:
-      - go test -v ./...
+      - go test -v ./... -short
+
+  test-unit:
+    desc: Run unit tests with verbose output
+    cmds:
+      - go test -v ./internal/... ./cmd/... -short
+
+  test-integration:
+    desc: Run integration tests (requires Docker)
+    cmds:
+      - go test -v -tags=integration ./...
+
+  test-e2e:
+    desc: Run end-to-end tests with real PostgreSQL containers (requires Docker)
+    cmds:
+      - |
+        echo "🐳 Checking Docker availability..."
+        if ! command -v docker &> /dev/null; then
+          echo "❌ Docker is not installed or not in PATH"
+          echo "Please install Docker to run e2e tests"
+          exit 1
+        fi
+        if ! docker info &> /dev/null; then
+          echo "❌ Docker daemon is not running"
+          echo "Please start Docker and try again"
+          exit 1
+        fi
+        echo "✅ Docker is available and running"
+      - |
+        echo "🧹 Cleaning up existing test containers..."
+        docker ps -a --filter "ancestor=postgres" --format "{{.ID}}" | xargs -r docker rm -f || true
+        docker volume prune -f &> /dev/null || true
+        echo "✅ Cleanup completed"
+      - |
+        echo "🧪 Running E2E tests with real PostgreSQL containers..."
+        export POSTGRES_E2E_TEST=true
+        export DOCKER_API_VERSION=1.40
+        go test -v -tags=e2e ./... -timeout=30m
+      - |
+        echo "🧹 Final cleanup..."
+        docker ps -a --filter "ancestor=postgres" --format "{{.ID}}" | xargs -r docker rm -f || true
+
+  test-e2e-script:
+    desc: Run e2e tests using the dedicated script
+    cmds:
+      - chmod +x scripts/run-e2e-tests.sh
+      - ./scripts/run-e2e-tests.sh run
+
+  test-all:
+    desc: Run all tests (unit + integration + e2e)
+    cmds:
+      - task: test-unit
+      - task: test-integration
+      - task: test-e2e
 
   test-coverage:
-    desc: Run tests with coverage
+    desc: Run tests with coverage report
     cmds:
-      - go test -v -coverprofile=coverage.out ./...
+      - go test -v -coverprofile=coverage.out ./... -short
       - go tool cover -html=coverage.out -o coverage.html
+      - echo "Coverage report generated at coverage.html"
+
+  test-coverage-full:
+    desc: Run all tests with coverage (including integration and e2e)
+    cmds:
+      - go test -v -coverprofile=coverage.out -tags="integration e2e" ./...
+      - go tool cover -html=coverage.out -o coverage.html
+      - go tool cover -func=coverage.out
+      - echo "Full coverage report generated at coverage.html"
+
+  test-coverage-e2e:
+    desc: Run e2e tests with coverage
+    cmds:
+      - go test -v -coverprofile=coverage-e2e.out -tags=e2e ./...
+      - go tool cover -html=coverage-e2e.out -o coverage-e2e.html
+      - echo "E2E coverage report generated at coverage-e2e.html"
+
+  test-watch:
+    desc: Run tests in watch mode (requires gotestsum)
+    cmds:
+      - |
+        if ! command -v gotestsum &> /dev/null; then
+          go install gotest.tools/gotestsum@latest
+        fi
+        gotestsum --watch -- -short ./...
+
+  test-ci:
+    desc: Run tests for CI environment
+    cmds:
+      - go test -v -race -coverprofile=coverage.out ./... -short
+      - go tool cover -func=coverage.out
 
   install:
     desc: Install binary to GOBIN
@@ -94,11 +211,18 @@ tasks:
       - ./{{.BUILD_DIR}}/{{.BINARY_NAME}} {{.CLI_ARGS}}
 
   check:
-    desc: Run all checks (fmt, lint, test)
+    desc: Run all checks (fmt, lint, unit tests)
     cmds:
       - task: fmt
       - task: lint
-      - task: test
+      - task: test-unit
+
+  check-full:
+    desc: Run all checks including integration tests
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: test-all
 
   release:
     desc: Build release binaries for all platforms
@@ -113,4 +237,312 @@ tasks:
     cmds:
       - ./{{.BUILD_DIR}}/{{.BINARY_NAME}} --help
       - echo ""
-      - ./{{.BUILD_DIR}}/{{.BINARY_NAME}} fork --help 
+      - ./{{.BUILD_DIR}}/{{.BINARY_NAME}} fork --help
+
+  # Release Management Tasks
+  release:patch:
+    desc: Create a patch release (e.g., 1.0.0 -> 1.0.1)
+    cmds:
+      - task: _release
+        vars: {TYPE: patch}
+
+  release:minor:
+    desc: Create a minor release (e.g., 1.0.0 -> 1.1.0)
+    cmds:
+      - task: _release
+        vars: {TYPE: minor}
+
+  release:major:
+    desc: Create a major release (e.g., 1.0.0 -> 2.0.0)
+    cmds:
+      - task: _release
+        vars: {TYPE: major}
+
+  release:dev:
+    desc: Create a development pre-release
+    cmds:
+      - task: _release
+        vars: {TYPE: dev}
+
+  _release:
+    internal: true
+    desc: Internal task for creating releases
+    vars:
+      CURRENT_VERSION:
+        sh: git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"
+      NEW_VERSION:
+        sh: |
+          current="{{.CURRENT_VERSION}}"
+          # Remove 'v' prefix if present
+          current=${current#v}
+
+          IFS='.' read -ra PARTS <<< "$current"
+          major=${PARTS[0]:-0}
+          minor=${PARTS[1]:-0}
+          patch=${PARTS[2]:-0}
+
+          case "{{.TYPE}}" in
+            "major")
+              echo "v$((major + 1)).0.0"
+              ;;
+            "minor")
+              echo "v${major}.$((minor + 1)).0"
+              ;;
+            "patch")
+              echo "v${major}.${minor}.$((patch + 1))"
+              ;;
+            "dev")
+              timestamp=$(date +%Y%m%d%H%M%S)
+              commit=$(git rev-parse --short HEAD)
+              echo "v${major}.${minor}.${patch}-dev.${timestamp}.${commit}"
+              ;;
+            *)
+              echo "Unknown release type: {{.TYPE}}" >&2
+              exit 1
+              ;;
+          esac
+    cmds:
+      - |
+        echo "🚀 Creating {{.TYPE}} release..."
+        echo "Current version: {{.CURRENT_VERSION}}"
+        echo "New version: {{.NEW_VERSION}}"
+      - |
+        # Ensure we're on main branch for non-dev releases
+        if [ "{{.TYPE}}" != "dev" ]; then
+          current_branch=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$current_branch" != "main" ]; then
+            echo "❌ Release must be created from main branch (currently on: $current_branch)"
+            exit 1
+          fi
+        fi
+      - |
+        # Ensure working directory is clean for non-dev releases
+        if [ "{{.TYPE}}" != "dev" ] && [ -n "$(git status --porcelain)" ]; then
+          echo "❌ Working directory is not clean. Please commit or stash changes."
+          exit 1
+        fi
+      - |
+        # Run tests before release
+        echo "🧪 Running tests before release..."
+        task check
+      - |
+        # Update version in files if needed
+        echo "📝 Updating version references..."
+        # Add version updating logic here if you have version files
+      - |
+        # Create and push tag
+        echo "🏷️ Creating git tag: {{.NEW_VERSION}}"
+        git tag -a "{{.NEW_VERSION}}" -m "Release {{.NEW_VERSION}}"
+        git push origin "{{.NEW_VERSION}}"
+      - |
+        echo "✅ Release {{.NEW_VERSION}} created successfully!"
+        echo "🔄 GitHub Actions will now build and publish the release artifacts."
+
+  docker-build:
+    desc: Build Docker image
+    cmds:
+      - |
+        VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0-dev")
+        docker build -t postgres-db-fork:${VERSION} -t postgres-db-fork:latest .
+      - |
+        VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0-dev")
+        echo "✅ Docker image built: postgres-db-fork:${VERSION}"
+
+  docker-push:
+    desc: Push Docker image to registry
+    deps: [docker-build]
+    cmds:
+      - |
+        VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0-dev")
+        echo "🚀 Pushing Docker images..."
+        docker push postgres-db-fork:${VERSION}
+        docker push postgres-db-fork:latest
+        echo "✅ Docker images pushed successfully"
+
+  build-all-platforms:
+    desc: Build binaries for all platforms (local testing)
+    cmds:
+      - task: build-all
+      - |
+        echo "✅ All platform binaries built in {{.BUILD_DIR}}/"
+        ls -la {{.BUILD_DIR}}/
+
+  release-info:
+    desc: Show current release information
+    cmds:
+      - |
+        echo "📋 Release Information"
+        echo "====================="
+        echo "Current version: $(git describe --tags --abbrev=0 2>/dev/null || echo 'No releases yet')"
+        echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
+        echo "Latest commit: $(git log -1 --format='%h %s')"
+        echo "Working directory status:"
+        git status --porcelain || echo "  Clean"
+
+  # CI simulation - run same checks as GitHub Actions
+  ci:
+    desc: "Run all CI checks locally (lint, test, validate)"
+    deps: [lint, test-unit, check-fmt, check-mod]
+    cmds:
+      - echo "✅ All CI checks passed!"
+
+  check-fmt:
+    desc: "Check code formatting"
+    cmds:
+      - |
+        if [ "$(gofmt -l . | wc -l)" -gt 0 ]; then
+          echo "❌ Code is not formatted. Run 'task fmt' to fix."
+          gofmt -l .
+          exit 1
+        else
+          echo "✅ Code is properly formatted"
+        fi
+
+  check-mod:
+    desc: "Check go.mod and go.sum are tidy"
+    cmds:
+      - go mod tidy
+      - |
+        if ! git diff --exit-code go.mod go.sum; then
+          echo "❌ go.mod or go.sum not tidy. Run 'go mod tidy'"
+          exit 1
+        else
+          echo "✅ go.mod and go.sum are tidy"
+        fi
+
+  # GitHub Actions local testing with act
+  act-install:
+    desc: "Install act for local GitHub Actions testing"
+    cmds:
+      - |
+        if ! command -v act &> /dev/null; then
+          echo "Installing act..."
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            if command -v brew &> /dev/null; then
+              brew install act
+            else
+              echo "Please install Homebrew first: https://brew.sh"
+              exit 1
+            fi
+          elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
+          else
+            echo "Please install act manually: https://github.com/nektos/act#installation"
+            exit 1
+          fi
+        else
+          echo "✅ act is already installed"
+        fi
+
+  act-check:
+    desc: "Check if act is installed and Docker is running"
+    cmds:
+      - |
+        if ! command -v act &> /dev/null; then
+          echo "❌ act is not installed. Run 'task act-install' first."
+          exit 1
+        fi
+        if ! docker info &> /dev/null; then
+          echo "❌ Docker is not running. Please start Docker first."
+          exit 1
+        fi
+        echo "✅ act and Docker are ready"
+
+  act-list:
+    desc: "List available GitHub Actions workflows and jobs"
+    deps: [act-check]
+    cmds:
+      - act -W .github/workflows/ci.yml --list
+
+  act-ci:
+    desc: "Run CI workflow locally with act"
+    deps: [act-check]
+    cmds:
+      - |
+        echo "🚀 Running CI workflow locally with act..."
+        echo "Note: This may take a while on first run (downloading images)"
+        act -W .github/workflows/ci.yml
+
+  act-ci-job:
+    desc: "Run specific CI job locally (usage: task act-ci-job JOB=lint)"
+    deps: [act-check]
+    cmds:
+      - |
+        if [ -z "{{.JOB}}" ]; then
+          echo "❌ Please specify a job. Available jobs:"
+          act -W .github/workflows/ci.yml --list
+          exit 1
+        fi
+        echo "🚀 Running job '{{.JOB}}' locally with act..."
+        act -W .github/workflows/ci.yml -j {{.JOB}}
+
+  act-ci-lint:
+    desc: "Run only the lint job locally"
+    deps: [act-check]
+    cmds:
+      - act -W .github/workflows/ci.yml -j lint
+
+  act-ci-test:
+    desc: "Run only the unit test job locally"
+    deps: [act-check]
+    cmds:
+      - act -W .github/workflows/ci.yml -j test
+
+  act-ci-validate:
+    desc: "Run only the validate job locally"
+    deps: [act-check]
+    cmds:
+      - act -W .github/workflows/ci.yml -j validate
+
+  act-ci-integration:
+    desc: "Run integration tests locally (requires Docker services)"
+    deps: [act-check]
+    cmds:
+      - |
+        echo "⚠️  Integration tests with services may not work perfectly with act"
+        echo "Consider using 'task test-integration' instead for local testing"
+        act -W .github/workflows/ci.yml -j integration-test
+
+  act-ci-fast:
+    desc: "Run CI workflow with faster settings (skip integration tests)"
+    deps: [act-check]
+    cmds:
+      - |
+        echo "🚀 Running fast CI checks (lint, test, validate) with act..."
+        act -W .github/workflows/ci.yml -j lint -j test -j validate
+
+  act-debug:
+    desc: "Run CI workflow with verbose debugging"
+    deps: [act-check]
+    cmds:
+      - act -W .github/workflows/ci.yml --verbose
+
+  # Pre-commit hooks
+  pre-commit-install:
+    desc: "Install pre-commit hooks"
+    cmds:
+      - |
+        if ! command -v pre-commit &> /dev/null; then
+          echo "Installing pre-commit..."
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            if command -v brew &> /dev/null; then
+              brew install pre-commit
+            else
+              pip install pre-commit
+            fi
+          else
+            pip install pre-commit
+          fi
+        fi
+      - pre-commit install
+      - pre-commit install --hook-type commit-msg
+
+  pre-commit-run:
+    desc: "Run pre-commit hooks on all files"
+    cmds:
+      - pre-commit run --all-files
+
+  pre-commit-update:
+    desc: "Update pre-commit hook versions"
+    cmds:
+      - pre-commit autoupdate

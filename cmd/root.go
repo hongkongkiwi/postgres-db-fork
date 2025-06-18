@@ -43,10 +43,22 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.postgres-db-fork.yaml)")
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
 	rootCmd.PersistentFlags().Bool("verbose", false, "Enable verbose output")
+	rootCmd.PersistentFlags().Bool("no-color", false, "Disable colored output")
+	rootCmd.PersistentFlags().Bool("force", false, "Skip confirmation prompts")
 
 	// Bind flags to viper
-	viper.BindPFlag("log-level", rootCmd.PersistentFlags().Lookup("log-level"))
-	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	if err := viper.BindPFlag("log-level", rootCmd.PersistentFlags().Lookup("log-level")); err != nil {
+		fmt.Printf("Failed to bind flag: %v\n", err)
+	}
+	if err := viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose")); err != nil {
+		fmt.Printf("Failed to bind flag: %v\n", err)
+	}
+	if err := viper.BindPFlag("no-color", rootCmd.PersistentFlags().Lookup("no-color")); err != nil {
+		fmt.Printf("Failed to bind flag: %v\n", err)
+	}
+	if err := viper.BindPFlag("force", rootCmd.PersistentFlags().Lookup("force")); err != nil {
+		fmt.Printf("Failed to bind flag: %v\n", err)
+	}
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -85,7 +97,7 @@ func initConfig() {
 	}
 
 	logrus.SetFormatter(&logrus.TextFormatter{
-		DisableColors: false,
+		DisableColors: viper.GetBool("no-color"),
 		FullTimestamp: true,
 	})
 }

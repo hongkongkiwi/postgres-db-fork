@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"postgres-db-fork/internal/config"
-	"postgres-db-fork/internal/db"
+	"github.com/hongkongkiwi/postgres-db-fork/internal/config"
+	"github.com/hongkongkiwi/postgres-db-fork/internal/db"
 
 	"github.com/sirupsen/logrus"
 )
@@ -63,7 +63,11 @@ func (f *Forker) forkSameServer(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to destination server: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Printf("Warning: Connection cleanup failed: %v\n", err)
+		}
+	}()
 
 	// Check if source database exists
 	exists, err := conn.DatabaseExists(f.config.Source.Database)
@@ -99,7 +103,7 @@ func (f *Forker) forkSameServer(ctx context.Context) error {
 	}
 
 	// Create the target database using the source as template
-	if err := conn.CreateDatabase(f.config.TargetDatabase, f.config.Source.Database); err != nil {
+	if err := conn.CreateDatabase(f.config.TargetDatabase, f.config.Source.Database, false); err != nil {
 		return fmt.Errorf("failed to create target database: %w", err)
 	}
 
@@ -126,7 +130,11 @@ func (f *Forker) forkCrossServer(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to source database: %w", err)
 	}
-	defer sourceConn.Close()
+	defer func() {
+		if err := sourceConn.Close(); err != nil {
+			fmt.Printf("Warning: Source connection cleanup failed: %v\n", err)
+		}
+	}()
 
 	// Connect to destination server for admin operations
 	adminConfig := f.config.Destination
@@ -136,7 +144,11 @@ func (f *Forker) forkCrossServer(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to destination server: %w", err)
 	}
-	defer destAdminConn.Close()
+	defer func() {
+		if err := destAdminConn.Close(); err != nil {
+			fmt.Printf("Warning: Destination admin connection cleanup failed: %v\n", err)
+		}
+	}()
 
 	// Check if target database exists
 	targetExists, err := destAdminConn.DatabaseExists(f.config.TargetDatabase)
@@ -155,7 +167,7 @@ func (f *Forker) forkCrossServer(ctx context.Context) error {
 	}
 
 	// Create empty target database
-	if err := destAdminConn.CreateDatabase(f.config.TargetDatabase, ""); err != nil {
+	if err := destAdminConn.CreateDatabase(f.config.TargetDatabase, "template1", false); err != nil {
 		return fmt.Errorf("failed to create target database: %w", err)
 	}
 
@@ -167,7 +179,11 @@ func (f *Forker) forkCrossServer(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to target database: %w", err)
 	}
-	defer destConn.Close()
+	defer func() {
+		if err := destConn.Close(); err != nil {
+			fmt.Printf("Warning: Destination connection cleanup failed: %v\n", err)
+		}
+	}()
 
 	// Get source database size for progress reporting
 	sourceSize, err := sourceConn.GetDatabaseSize(f.config.Source.Database)

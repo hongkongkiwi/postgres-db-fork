@@ -1,0 +1,139 @@
+name: PR Database Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_target:
+    types: [closed]
+
+env:
+  # Database connection settings
+  PGFORK_SOURCE_HOST: ${{ secrets.STAGING_DB_HOST }}
+  PGFORK_SOURCE_USER: ${{ secrets.STAGING_DB_USER }}
+  PGFORK_SOURCE_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+  PGFORK_SOURCE_DATABASE: myapp_staging
+  PGFORK_SOURCE_SSLMODE: require
+
+  PGFORK_DEST_HOST: ${{ secrets.PREVIEW_DB_HOST }}
+  PGFORK_DEST_USER: ${{ secrets.PREVIEW_DB_USER }}
+  PGFORK_DEST_PASSWORD: ${{ secrets.PREVIEW_DB_PASSWORD }}
+  PGFORK_DEST_SSLMODE: require
+
+  # Template variables for database naming
+  PGFORK_VAR_PR_NUMBER: ${{ github.event.pull_request.number }}
+  PGFORK_VAR_BRANCH: ${{ github.head_ref }}
+
+jobs:
+  create-preview-db:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download postgres-db-fork
+        run: |
+          # Download latest release
+          curl -L -o postgres-db-fork \
+            https://github.com/your-org/postgres-db-fork/releases/latest/download/postgres-db-fork-linux-amd64
+          chmod +x postgres-db-fork
+
+      - name: Create PR preview database
+        id: create_db
+        run: |
+          export PGFORK_TARGET_DATABASE="myapp_pr_{{.PR_NUMBER}}"
+          export PGFORK_OUTPUT_FORMAT=json
+          export PGFORK_QUIET=true
+          export PGFORK_DROP_IF_EXISTS=true
+
+          # Create the database and capture output
+          ./postgres-db-fork fork > result.json
+
+          # Extract database name for outputs
+          DB_NAME=$(jq -r '.database' result.json)
+          echo "database_name=$DB_NAME" >> $GITHUB_OUTPUT
+          echo "preview_url=https://myapp-$DB_NAME.preview.example.com" >> $GITHUB_OUTPUT
+
+          # Output for GitHub Actions summary
+          echo "## 🗄️ Preview Database Created" >> $GITHUB_STEP_SUMMARY
+          echo "**Database:** \`$DB_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Preview URL:** https://myapp-$DB_NAME.preview.example.com" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🗄️ Preview Database Ready
+
+              **Database:** \`${{ steps.create_db.outputs.database_name }}\`
+              **Preview URL:** ${{ steps.create_db.outputs.preview_url }}
+
+              This database will be automatically cleaned up when the PR is closed.`
+            })
+
+    outputs:
+      database_name: ${{ steps.create_db.outputs.database_name }}
+      preview_url: ${{ steps.create_db.outputs.preview_url }}
+
+  cleanup-preview-db:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download postgres-db-fork
+        run: |
+          # Download latest release
+          curl -L -o postgres-db-fork \
+            https://github.com/your-org/postgres-db-fork/releases/latest/download/postgres-db-fork-linux-amd64
+          chmod +x postgres-db-fork
+
+      - name: Cleanup PR preview database
+        run: |
+          export PGFORK_CLEANUP_HOST=${{ secrets.PREVIEW_DB_HOST }}
+          export PGFORK_CLEANUP_USER=${{ secrets.PREVIEW_DB_USER }}
+          export PGFORK_CLEANUP_PASSWORD=${{ secrets.PREVIEW_DB_PASSWORD }}
+          export PGFORK_CLEANUP_PATTERN="myapp_pr_${{ github.event.pull_request.number }}"
+          export PGFORK_CLEANUP_FORCE=true
+
+          ./postgres-db-fork cleanup --output-format json --quiet
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🧹 Preview Database Cleaned Up
+
+              The preview database for this PR has been automatically removed.`
+            })
+
+  # Optional: Scheduled cleanup of old databases
+  scheduled-cleanup:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download postgres-db-fork
+        run: |
+          # Download latest release
+          curl -L -o postgres-db-fork \
+            https://github.com/your-org/postgres-db-fork/releases/latest/download/postgres-db-fork-linux-amd64
+          chmod +x postgres-db-fork
+
+      - name: Cleanup old PR databases
+        run: |
+          export PGFORK_CLEANUP_HOST=${{ secrets.PREVIEW_DB_HOST }}
+          export PGFORK_CLEANUP_USER=${{ secrets.PREVIEW_DB_USER }}
+          export PGFORK_CLEANUP_PASSWORD=${{ secrets.PREVIEW_DB_PASSWORD }}
+          export PGFORK_CLEANUP_PATTERN="myapp_pr_*"
+          export PGFORK_CLEANUP_OLDER_THAN=7d
+
+          ./postgres-db-fork cleanup --output-format json

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"postgres-db-fork/internal/config"
+	"github.com/hongkongkiwi/postgres-db-fork/internal/config"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	"github.com/sirupsen/logrus"
 )
 
@@ -31,7 +31,9 @@ func NewConnection(cfg *config.DatabaseConfig) (*Connection, error) {
 
 	// Test the connection
 	if err := db.Ping(); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Error("Failed to close database connection after ping failure")
+		}
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -53,46 +55,63 @@ func (c *Connection) Close() error {
 
 // DatabaseExists checks if a database exists
 func (c *Connection) DatabaseExists(dbName string) (bool, error) {
-	var exists bool
-	query := "SELECT EXISTS(SELECT datname FROM pg_catalog.pg_database WHERE datname = $1)"
+	query := "SELECT 1 FROM pg_database WHERE datname = $1"
+	var exists int
 	err := c.DB.QueryRow(query, dbName).Scan(&exists)
-	return exists, err
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
-// CreateDatabase creates a new database
-func (c *Connection) CreateDatabase(dbName string, templateDB string) error {
-	query := fmt.Sprintf("CREATE DATABASE %s", dbName)
-	if templateDB != "" {
-		query += fmt.Sprintf(" WITH TEMPLATE %s", templateDB)
+// CreateDatabase creates a new database using template-based cloning
+func (c *Connection) CreateDatabase(targetDB, sourceDB string, dropIfExists bool) error {
+	if dropIfExists {
+		if err := c.DropDatabase(targetDB); err != nil {
+			logrus.WithError(err).Warnf("Could not drop existing database %s (may not exist)", targetDB)
+		}
 	}
 
-	logrus.Infof("Creating database: %s", dbName)
+	query := fmt.Sprintf(
+		"CREATE DATABASE %s WITH TEMPLATE %s",
+		pq.QuoteIdentifier(targetDB),
+		pq.QuoteIdentifier(sourceDB),
+	)
+
 	_, err := c.DB.Exec(query)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to create database %s: %w", targetDB, err)
+	}
+
+	logrus.Infof("Created database %s using template %s", targetDB, sourceDB)
+	return nil
 }
 
-// DropDatabase drops a database
+// DropDatabase drops a database if it exists
 func (c *Connection) DropDatabase(dbName string) error {
 	// First, terminate all connections to the database
 	terminateQuery := `
 		SELECT pg_terminate_backend(pid)
-		FROM pg_stat_activity 
+		FROM pg_stat_activity
 		WHERE datname = $1 AND pid <> pg_backend_pid()`
 
-	logrus.Infof("Terminating connections to database: %s", dbName)
 	_, err := c.DB.Exec(terminateQuery, dbName)
 	if err != nil {
-		logrus.Warnf("Failed to terminate connections: %v", err)
+		logrus.WithError(err).Warnf("Could not terminate connections to database %s", dbName)
 	}
 
-	// Wait a moment for connections to close
-	time.Sleep(100 * time.Millisecond)
-
 	// Drop the database
-	dropQuery := fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName)
-	logrus.Infof("Dropping database: %s", dbName)
-	_, err = c.DB.Exec(dropQuery)
-	return err
+	query := fmt.Sprintf("DROP DATABASE IF EXISTS %s", pq.QuoteIdentifier(dbName))
+	_, err = c.DB.Exec(query)
+	if err != nil {
+		return fmt.Errorf("failed to drop database %s: %w", dbName, err)
+	}
+
+	logrus.Infof("Dropped database %s", dbName)
+	return nil
 }
 
 // GetDatabaseSize returns the size of a database in bytes
@@ -110,16 +129,20 @@ func (c *Connection) GetTableList(schemaName string) ([]string, error) {
 	}
 
 	query := `
-		SELECT tablename 
-		FROM pg_tables 
-		WHERE schemaname = $1 
+		SELECT tablename
+		FROM pg_tables
+		WHERE schemaname = $1
 		ORDER BY tablename`
 
 	rows, err := c.DB.Query(query, schemaName)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logrus.WithError(err).Error("Failed to close rows")
+		}
+	}()
 
 	var tables []string
 	for rows.Next() {

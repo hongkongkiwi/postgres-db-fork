@@ -1,0 +1,16 @@
+---
+default: true
+MD013:
+  line_length: 120
+MD025:
+  siblings_only: true
+MD033:
+  allowed_elements:
+    - br
+    - details
+    - summary
+    - kbd
+    - sub
+    - sup
+MD026:
+  punctuation: ".,;:!"

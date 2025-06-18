@@ -1,0 +1,230 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of tests to run'
+        required: true
+        default: 'e2e'
+        type: choice
+        options:
+          - e2e
+          - all
+          - integration
+
+jobs:
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        postgres_version: ["12", "13", "14", "15"]
+        go_version: ["1.21", "1.22"]
+
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres_version }}-alpine
+        env:
+          POSTGRES_PASSWORD: testpass # pragma: allowlist secret
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go_version }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.go_version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.go_version }}-
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          go mod tidy
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          timeout 60s bash -c '
+            until pg_isready -h localhost -p 5432 -U testuser; do
+              echo "Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+        env:
+          PGPASSWORD: testpass # pragma: allowlist secret
+
+      - name: Run unit tests
+        run: |
+          go test -v ./... -short -race -coverprofile=unit-coverage.out
+
+      - name: Run integration tests
+        run: |
+          go test -v -tags=integration ./... -timeout=15m
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5432"
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass # pragma: allowlist secret
+          POSTGRES_DB: testdb
+
+      - name: Run E2E tests
+        run: |
+          chmod +x scripts/run-e2e-tests.sh
+          ./scripts/run-e2e-tests.sh coverage
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5432"
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass # pragma: allowlist secret
+          POSTGRES_DB: testdb
+          DOCKER_API_VERSION: "1.40"
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        if: matrix.postgres_version == 14 && matrix.go_version == '1.22'
+        with:
+          name: coverage-reports
+          path: |
+            unit-coverage.out
+            coverage-e2e.out
+            coverage-e2e.html
+          retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-pg${{ matrix.postgres_version }}-go${{ matrix.go_version }}
+          path: |
+            **/*test*.out
+            **/*test*.xml
+            **/*test*.json
+          retention-days: 7
+
+  docker-e2e:
+    name: Docker-based E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-1.22-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-1.22-
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          go mod tidy
+
+      - name: Run comprehensive E2E tests
+        run: |
+          chmod +x scripts/run-e2e-tests.sh
+          ./scripts/run-e2e-tests.sh coverage
+        env:
+          POSTGRES_E2E_TEST: "true"
+          DOCKER_API_VERSION: "1.40"
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          {
+            echo "## E2E Test Results"
+            echo ""
+
+            if [ -f coverage-e2e.out ]; then
+              echo "### Coverage Summary"
+              echo "\`\`\`"
+              go tool cover -func=coverage-e2e.out | tail -1
+              echo "\`\`\`"
+            fi
+
+            echo ""
+            echo "### Test Environment"
+            echo "- Go Version: $(go version)"
+            echo "- Docker Version: $(docker --version)"
+            echo "- OS: $(uname -a)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload comprehensive coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: comprehensive-e2e-coverage
+          path: |
+            coverage-e2e.out
+            coverage-e2e.html
+          retention-days: 30
+
+  performance-tests:
+    name: Performance E2E Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.test_type == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          go mod tidy
+
+      - name: Run performance tests
+        run: |
+          # Run e2e tests with performance benchmarks
+          go test -v -tags=e2e -bench=. -benchmem ./... -timeout=45m
+        env:
+          POSTGRES_E2E_TEST: "true"
+          DOCKER_API_VERSION: "1.40"
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: |
+            **/*bench*.out
+            **/*profile*.out
+          retention-days: 30

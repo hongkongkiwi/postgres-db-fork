@@ -1,0 +1,105 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Build artifacts
+/bin/
+/dist/
+/build/
+postgres-db-fork
+postgres-db-fork.exe
+
+# IDE and editor files
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Coverage reports
+coverage.out
+coverage.html
+coverage.xml
+
+# Testing
+.testcache/
+testdata/
+*.test.db
+test-results/
+integration-test-results/
+e2e-test-results/
+
+# Configuration files with sensitive data
+config.local.yaml
+config.prod.yaml
+config.dev.yaml
+*.local.yaml
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+*.sql.bak
+
+# Task runner
+.task/
+
+# Temporary folders
+tmp/
+temp/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.act
+
+# Release artifacts
+release/
+artifacts/
+
+# Local development
+.local/
+local/
+
+# Act (GitHub Actions local runner)
+.actrc.local
+
+# Pre-commit
+.pre-commit-config.yaml.local
+
+# Profiling
+*.prof
+*.pprof
+
+# Delve debugger
+debug

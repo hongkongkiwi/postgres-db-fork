@@ -1,0 +1,115 @@
+# CI/CD Database Fork Configuration
+# This configuration enables automated PR preview databases
+
+# Source database (staging/production)
+source:
+  host: "${PGFORK_SOURCE_HOST}"
+  port: 5432
+  username: "${PGFORK_SOURCE_USER}"
+  password: "${PGFORK_SOURCE_PASSWORD}"
+  database: "${PGFORK_SOURCE_DATABASE}"
+  sslmode: require
+
+# Destination database server
+destination:
+  host: "${PGFORK_DEST_HOST}"
+  port: 5432
+  username: "${PGFORK_DEST_USER}"
+  password: "${PGFORK_DEST_PASSWORD}"
+  sslmode: require
+
+# Target database naming with templates
+target_database: "myapp_pr_{{.PR_NUMBER}}"
+
+# Fork settings
+drop_if_exists: true
+max_connections: 4
+chunk_size: 1000
+timeout: 30m
+
+# CI/CD specific settings
+output_format: json
+quiet: true
+dry_run: false
+
+# Template variables (can also be set via PGFORK_VAR_* environment variables)
+template_vars:
+  APP_NAME: "myapp"
+  ENVIRONMENT: "preview"
+
+# Performance optimizations for CI/CD
+exclude_tables:
+  - "audit_logs"           # Large audit tables
+  - "performance_metrics"  # Time-series data
+  - "temp_*"              # Temporary tables
+
+# Example environment variable configurations:
+#
+# Required for source database:
+# PGFORK_SOURCE_HOST=staging-db.example.com
+# PGFORK_SOURCE_USER=readonly_user
+# PGFORK_SOURCE_PASSWORD=secure_password # pragma: allowlist secret
+# PGFORK_SOURCE_DATABASE=myapp_staging
+#
+# Required for destination database:
+# PGFORK_DEST_HOST=preview-db.example.com
+# PGFORK_DEST_USER=admin_user
+# PGFORK_DEST_PASSWORD=admin_password # pragma: allowlist secret
+#
+# Template variables (automatically detected from CI/CD):
+# PGFORK_VAR_PR_NUMBER=123
+# PGFORK_VAR_BRANCH=feature_new_api
+# PGFORK_VAR_COMMIT_SHORT=abc12345
+#
+# CI/CD specific settings:
+# PGFORK_OUTPUT_FORMAT=json
+# PGFORK_QUIET=true
+# PGFORK_DROP_IF_EXISTS=true
+
+---
+# Example cleanup configuration
+cleanup:
+  # Database connection (usually same as destination)
+  host: "${PGFORK_CLEANUP_HOST}"
+  port: 5432
+  username: "${PGFORK_CLEANUP_USER}"
+  password: "${PGFORK_CLEANUP_PASSWORD}"
+  sslmode: require
+
+  # Cleanup patterns
+  pattern: "myapp_pr_*"
+  older_than: "7d"  # Delete databases older than 7 days
+
+  # Exclude important databases
+  exclude:
+    - "myapp_pr_123"  # Keep specific PR database
+    - "myapp_staging"
+    - "myapp_production"
+
+  # Output settings
+  output_format: json
+  quiet: true
+
+# Example cleanup environment variables:
+# PGFORK_CLEANUP_HOST=preview-db.example.com
+# PGFORK_CLEANUP_USER=admin_user
+# PGFORK_CLEANUP_PASSWORD=admin_password # pragma: allowlist secret
+# PGFORK_CLEANUP_PATTERN=myapp_pr_*
+# PGFORK_CLEANUP_OLDER_THAN=7d
+# PGFORK_CLEANUP_FORCE=false
+
+---
+# Example template naming patterns:
+
+# PR-based databases:
+# "{{.APP_NAME}}_pr_{{.PR_NUMBER}}"              -> myapp_pr_123
+# "preview_{{.BRANCH}}_{{.COMMIT_SHORT}}"        -> preview_feature_api_abc12345
+# "{{.APP_NAME}}_{{.ENVIRONMENT}}_{{.PR_NUMBER}}" -> myapp_preview_123
+
+# Branch-based databases:
+# "{{.APP_NAME}}_branch_{{.BRANCH}}"             -> myapp_branch_feature_api
+# "dev_{{.BRANCH}}_{{.COMMIT_SHORT}}"            -> dev_feature_api_abc12345
+
+# Time-based databases:
+# "{{.APP_NAME}}_test_{{.DATE}}"                 -> myapp_test_20241223
+# "temp_{{.TIMESTAMP}}"                          -> temp_1640234567

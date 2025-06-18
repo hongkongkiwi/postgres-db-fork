@@ -45,4 +45,4 @@ data_only: false
 
 # Logging - use info level to avoid debug overhead
 log_level: info
-verbose: false 
+verbose: false

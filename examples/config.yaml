@@ -50,4 +50,4 @@ exclude_tables:
 
 # Logging configuration
 log_level: info          # debug, info, warn, error
-verbose: false 
+verbose: false

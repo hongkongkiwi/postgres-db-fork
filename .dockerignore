@@ -1,0 +1,135 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+examples/
+README*
+CHANGELOG*
+LICENSE*
+
+# Build artifacts
+bin/
+dist/
+build/
+postgres-db-fork
+postgres-db-fork.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+testdata/
+test_helpers.go
+integration_test.go
+e2e_test.go
+*.test
+test-results/
+integration-test-results/
+e2e-test-results/
+
+# Coverage files
+*.out
+*.html
+coverage/
+coverage.xml
+*.lcov
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Icon?
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+.cache
+.parcel-cache
+
+# Logs
+*.log
+logs/
+
+# GitHub and CI/CD
+.github/
+.travis.yml
+.circleci/
+.gitlab-ci.yml
+
+# Task files
+Taskfile.yml
+.task/
+
+# Scripts (keep only if needed in container)
+scripts/
+
+# Docker files
+Dockerfile*
+.dockerignore
+docker-compose.yml
+docker-compose.yaml
+
+# Environment files
+.env
+.env.*
+.env.act
+.actrc
+.actrc.local
+
+# Node modules (if any)
+node_modules/
+.npm
+.yarn-integrity
+
+# Go specific
+vendor/
+go.work
+go.work.sum
+*.prof
+*.pprof
+debug
+
+# Configuration files with sensitive data
+config.local.yaml
+config.prod.yaml
+config.dev.yaml
+*.local.yaml
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.test.db
+
+# Backup files
+*.bak
+*.backup
+*.sql.bak
+
+# Release artifacts
+release/
+artifacts/
+
+# Local development
+.local/
+local/
+
+# Pre-commit
+.pre-commit-config.yaml
+.pre-commit-config.yaml.local

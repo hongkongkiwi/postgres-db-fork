@@ -1,0 +1,20 @@
+# Act configuration for postgres-db-fork
+# This file configures act for optimal local GitHub Actions testing
+
+# Use smaller Ubuntu image for faster startup
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Skip certain steps that don't work well locally
+--env-file .env.act
+
+# Set container architecture for M-series Mac compatibility
+--container-architecture linux/amd64
+
+# Set default platform
+--platform ubuntu-latest=linux/amd64
+
+# Verbose output for debugging (uncomment if needed)
+# --verbose
+
+# Dry run mode (uncomment to see what would run without executing)
+# --dry-run

@@ -1,322 +1,555 @@
 # PostgreSQL Database Fork Tool
 
-A high-performance CLI tool for forking (copying) PostgreSQL databases, supporting both same-server and cross-server operations with intelligent optimization.
+A high-performance command-line tool for forking (copying) PostgreSQL databases with optimization for speed and CI/CD integration.
 
 ## Features
 
-- **Smart Forking Strategy**: Automatically detects same-server vs cross-server scenarios
-- **Same-Server Optimization**: Uses PostgreSQL's efficient template-based database cloning
-- **Cross-Server Support**: Parallel data transfer with configurable concurrency
-- **Progress Monitoring**: Real-time feedback and size reporting
-- **Flexible Configuration**: CLI flags, configuration files, or environment variables
-- **Table Filtering**: Include/exclude specific tables from the fork operation
-- **Schema-Only/Data-Only Options**: Transfer just schema or just data as needed
-- **Robust Error Handling**: Comprehensive validation and error recovery
-
-## Installation
-
-### From Source
-
-```bash
-git clone <repository-url>
-cd postgres-db-fork
-
-# Using Task (recommended)
-task build
-
-# Or directly with Go
-go build -o postgres-db-fork main.go
-```
-
-### Prerequisites
-
-- Go 1.21 or later
-- [Task](https://taskfile.dev/#/installation) (optional but recommended)
-- Access to PostgreSQL database(s)
-
-### Pre-built Binaries
-
-Download the latest release for your platform from the [releases page](releases).
+- **High Performance**: Uses PostgreSQL COPY protocol for 10-50x faster data transfer than INSERT-based methods
+- **Dual Mode Operation**: Template-based same-server cloning and cross-server data transfer
+- **Read-Only Source Access**: Safely fork from production databases without write permissions
+- **CI/CD Integration**: Environment variables, JSON output, template naming, and cleanup automation
+- **Parallel Processing**: Configurable concurrent connections for optimal performance
+- **Comprehensive Transfer**: Tables, indexes, foreign keys, sequences, and data with progress monitoring
 
 ## Quick Start
 
-### Same-Server Fork (Most Efficient)
-
-Fork a database within the same PostgreSQL server:
+### Installation
 
 ```bash
-postgres-db-fork fork \
-  --source-host localhost \
-  --source-user myuser \
-  --source-password mypass \
-  --source-db production_app \
-  --target-db development_app
+# Download the latest release
+curl -L -o postgres-db-fork https://github.com/your-org/postgres-db-fork/releases/latest/download/postgres-db-fork-linux-amd64
+chmod +x postgres-db-fork
+
+# Or build from source
+go build -o postgres-db-fork ./cmd/main.go
 ```
 
-### Cross-Server Fork
-
-Fork a database from one server to another:
+### Basic Usage
 
 ```bash
+# Fork database on same server (fast template-based)
+postgres-db-fork fork \
+  --source-db myapp_prod \
+  --target-db myapp_dev \
+  --source-user readonly_user \
+  --source-password secret
+
+# Fork database cross-server (with data transfer)
 postgres-db-fork fork \
   --source-host prod.example.com \
-  --source-user produser \
-  --source-password prodpass \
-  --source-db myapp_prod \
-  --dest-host dev.example.com \
-  --dest-user devuser \
-  --dest-password devpass \
-  --target-db myapp_dev \
-  --drop-if-exists
+  --source-db myapp \
+  --dest-host staging.example.com \
+  --target-db myapp_staging
+```
+
+## CI/CD Integration
+
+### Environment Variables
+
+All configuration can be provided via environment variables with the `PGFORK_` prefix:
+
+```bash
+# Source database
+export PGFORK_SOURCE_HOST=staging-db.example.com
+export PGFORK_SOURCE_USER=readonly_user
+export PGFORK_SOURCE_PASSWORD=secure_password
+export PGFORK_SOURCE_DATABASE=myapp_staging
+
+# Destination database
+export PGFORK_DEST_HOST=preview-db.example.com
+export PGFORK_DEST_USER=admin_user
+export PGFORK_DEST_PASSWORD=admin_password
+
+# Template variables
+export PGFORK_VAR_PR_NUMBER=123
+export PGFORK_VAR_BRANCH=feature_api
+
+# CI/CD settings
+export PGFORK_OUTPUT_FORMAT=json
+export PGFORK_QUIET=true
+export PGFORK_DROP_IF_EXISTS=true
+```
+
+### Template Naming
+
+Use Go templates for dynamic database naming:
+
+```bash
+# PR-based databases
+postgres-db-fork fork --target-db "myapp_pr_{{.PR_NUMBER}}"
+
+# Branch-based databases
+postgres-db-fork fork --target-db "{{.APP_NAME}}_{{.BRANCH}}_{{.COMMIT_SHORT}}"
+
+# Custom variables
+postgres-db-fork fork \
+  --target-db "{{.APP_NAME}}_{{.ENVIRONMENT}}_{{.PR_NUMBER}}" \
+  --template-var APP_NAME=myapp \
+  --template-var ENVIRONMENT=preview
+```
+
+**Available template variables:**
+
+- `{{.PR_NUMBER}}` - GitHub PR number or GitLab MR IID
+- `{{.BRANCH}}` - Sanitized branch name (safe for database identifiers)
+- `{{.COMMIT_SHORT}}` - First 8 characters of commit SHA
+- `{{.VAR_NAME}}` - Custom variables via `--template-var` or `PGFORK_VAR_*`
+
+### JSON Output
+
+Perfect for CI/CD automation:
+
+```bash
+postgres-db-fork fork --output-format json --quiet
+```
+
+```json
+{
+  "format": "json",
+  "success": true,
+  "message": "Database fork completed successfully",
+  "database": "myapp_pr_123",
+  "duration": "2m30s"
+}
+```
+
+### Cleanup Command
+
+Automatically clean up old PR databases:
+
+```bash
+# Delete databases matching pattern older than 7 days
+postgres-db-fork cleanup \
+  --pattern "myapp_pr_*" \
+  --older-than 7d \
+  --user admin_user
+
+# Force delete specific database
+postgres-db-fork cleanup \
+  --pattern "myapp_pr_123" \
+  --force
+
+# Dry run to see what would be deleted
+postgres-db-fork cleanup \
+  --pattern "myapp_pr_*" \
+  --older-than 3d \
+  --dry-run
+```
+
+## GitHub Actions Integration
+
+See [`examples/github-actions.yml`](examples/github-actions.yml) for a complete workflow that:
+
+- Creates PR preview databases automatically
+- Uses template naming for consistent database names
+- Comments on PRs with database information
+- Cleans up databases when PRs are closed
+- Provides scheduled cleanup for orphaned databases
+
+Example workflow step:
+
+```yaml
+- name: Create PR preview database
+  run: |
+    export PGFORK_TARGET_DATABASE="myapp_pr_{{.PR_NUMBER}}"
+    export PGFORK_OUTPUT_FORMAT=json
+    export PGFORK_VAR_PR_NUMBER=${{ github.event.pull_request.number }}
+    ./postgres-db-fork fork > result.json
+
+    DB_NAME=$(jq -r '.database' result.json)
+    echo "Database created: $DB_NAME"
+```
+
+## Configuration
+
+### Command Line Flags
+
+#### Fork Command
+
+```bash
+postgres-db-fork fork [flags]
+
+# Database connection
+--source-host        Source database host (default: localhost)
+--source-port        Source database port (default: 5432)
+--source-user        Source database username
+--source-password    Source database password
+--source-db          Source database name (required)
+--source-sslmode     Source SSL mode (default: prefer)
+
+--dest-host          Destination host (defaults to source-host)
+--dest-user          Destination username (defaults to source-user)
+--dest-password      Destination password (defaults to source-password)
+--dest-sslmode       Destination SSL mode (defaults to source-sslmode)
+
+--target-db          Target database name (required, supports templates)
+
+# Fork options
+--drop-if-exists     Drop target database if it exists
+--max-connections    Parallel connections (default: 4)
+--chunk-size         Rows per batch (default: 1000)
+--timeout            Operation timeout (default: 30m)
+--exclude-tables     Tables to exclude
+--include-tables     Tables to include (if specified, only these)
+--schema-only        Transfer schema only
+--data-only          Transfer data only
+
+# CI/CD integration
+--output-format      Output format: text or json (default: text)
+--quiet              Suppress output except errors
+--dry-run            Preview without making changes
+--template-var       Template variables (--template-var PR_NUMBER=123)
+--env-vars           Load from environment variables (default: true)
+
+# Progress monitoring & resumption
+--progress-file      Write progress updates to file (for CI/CD monitoring)
+--no-progress        Disable progress reporting
+--job-id             Job ID for resumption (auto-generated if not provided)
+--resume             Resume interrupted job
+--state-dir          Directory for job state files
+
+# Error handling
+--retry-attempts     Maximum retry attempts (default: 3)
+--retry-delay        Initial retry delay (default: 1s)
+```
+
+#### Cleanup Command Flags
+
+```bash
+postgres-db-fork cleanup [flags]
+
+# Database connection
+--host               Database host (required)
+--user               Database username (required)
+--password           Database password
+--sslmode            SSL mode (default: prefer)
+
+# Cleanup criteria
+--pattern            Database name pattern (required, supports wildcards)
+--older-than         Delete databases older than duration (e.g., 7d, 24h)
+--exclude            Database names to exclude
+--force              Force deletion without age requirement
+
+# Output options
+--output-format      Output format: text or json
+--quiet              Suppress output except errors
+--dry-run            Show what would be deleted
+```
+
+#### List Command
+
+Essential for CI/CD scripts to discover databases:
+
+```bash
+postgres-db-fork list [flags]
+
+# Database connection
+--host               Database host (default: localhost)
+--user               Database username (required)
+--password           Database password
+
+# Filtering
+--pattern            Database name pattern (default: *)
+--exclude            Database names to exclude
+--older-than         Only show databases older than duration
+--newer-than         Only show databases newer than duration
+
+# Display options
+--show-size          Include database size information
+--show-age           Include database age information
+--show-owner         Include database owner information
+--sort-by            Sort by: name, size, age (default: name)
+
+# Output options
+--output-format      Output format: text or json
+--quiet              Only output database names
+--count-only         Only output count of matching databases
+
+# Examples
+postgres-db-fork list --pattern "myapp_pr_*" --show-size --output-format json
+postgres-db-fork list --pattern "myapp_pr_123" --quiet  # Check if database exists
+```
+
+#### Validate Command
+
+Pre-flight validation for CI/CD workflows:
+
+```bash
+postgres-db-fork validate [flags]
+
+# Uses same connection flags as fork command
+
+# Validation options
+--quick              Only test basic connectivity
+--skip-permissions   Skip permission checks
+--check-resources    Check available disk space and resources
+
+# Output options
+--output-format      Output format: text or json
+--quiet              Only output errors and final result
+
+# Examples
+postgres-db-fork validate --source-host prod.example.com --quick
+postgres-db-fork validate --output-format json --check-resources
 ```
 
 ### Configuration File
 
-Create a configuration file for repeated operations:
-
-```bash
-postgres-db-fork fork --config my-fork-config.yaml
-```
-
-## Command Reference
-
-### Global Options
-
-- `--config`: Configuration file path
-- `--log-level`: Log level (debug, info, warn, error)
-- `--verbose`: Enable verbose output
-
-### Fork Command Options
-
-#### Source Database
-- `--source-host`: Source database host (default: localhost)
-- `--source-port`: Source database port (default: 5432)
-- `--source-user`: Source database username
-- `--source-password`: Source database password
-- `--source-db`: Source database name (required)
-- `--source-sslmode`: SSL mode (default: prefer)
-
-#### Destination Database
-- `--dest-host`: Destination host (defaults to source-host)
-- `--dest-port`: Destination port (defaults to source-port)
-- `--dest-user`: Destination username (defaults to source-user)
-- `--dest-password`: Destination password (defaults to source-password)
-- `--dest-sslmode`: Destination SSL mode (defaults to source-sslmode)
-
-#### Target Database
-- `--target-db`: Target database name (required)
-- `--drop-if-exists`: Drop target database if it exists
-
-#### Transfer Options
-- `--max-connections`: Maximum parallel connections (default: 4)
-- `--chunk-size`: Rows per batch (default: 1000)
-- `--timeout`: Operation timeout (default: 30m)
-- `--exclude-tables`: Tables to exclude (comma-separated)
-- `--include-tables`: Tables to include (if specified, only these are transferred)
-- `--schema-only`: Transfer schema only, no data
-- `--data-only`: Transfer data only, no schema
-
-## Configuration File Format
-
-Create a YAML configuration file for complex scenarios:
+See [`examples/ci-cd-config.yaml`](examples/ci-cd-config.yaml) for full configuration examples.
 
 ```yaml
+# Basic configuration
 source:
-  host: prod.example.com
-  port: 5432
-  username: produser
-  password: prodpass
-  database: myapp_production
-  sslmode: require
+  host: staging-db.example.com
+  database: myapp_staging
+  username: readonly_user
+  password: ${PGFORK_SOURCE_PASSWORD}
 
-destination:
-  host: dev.example.com
-  port: 5432
-  username: devuser
-  password: devpass
-  sslmode: prefer
-
-target_database: myapp_development
+target_database: "myapp_pr_{{.PR_NUMBER}}"
 drop_if_exists: true
+output_format: json
+
+# Performance settings
 max_connections: 8
-chunk_size: 2000
-timeout: 45m
-
 exclude_tables:
-  - audit_logs
-  - temp_data
-  - session_data
-
-# Or use include_tables to only transfer specific tables
-# include_tables:
-#   - users
-#   - products
-#   - orders
+  - "audit_logs"
+  - "performance_metrics"
 ```
 
-## How It Works
+## Performance Optimization
 
-### Same-Server Fork (Template-Based)
+### Database Settings
 
-When source and destination are on the same PostgreSQL server, the tool uses PostgreSQL's `CREATE DATABASE ... WITH TEMPLATE` feature:
+For optimal performance, configure your destination PostgreSQL server:
 
-1. Connects to the PostgreSQL server
-2. Validates source database exists
-3. Handles target database (drop if exists, if requested)
-4. Creates new database using source as template
-5. Reports completion with size information
+```sql
+-- Temporary settings for faster data loading
+ALTER SYSTEM SET wal_level = minimal;
+ALTER SYSTEM SET max_wal_senders = 0;
+ALTER SYSTEM SET checkpoint_completion_target = 0.9;
+ALTER SYSTEM SET wal_buffers = '32MB';
+ALTER SYSTEM SET shared_buffers = '1GB';
+SELECT pg_reload_conf();
+```
 
-This approach is extremely fast as PostgreSQL handles the copy at the storage level.
+### Hardware Recommendations
 
-### Cross-Server Fork (Data Transfer)
+- **CPU**: Multi-core for parallel processing (4+ cores recommended)
+- **Memory**: 4GB+ RAM, more for large databases
+- **Storage**: SSD storage for both source and destination
+- **Network**: High bandwidth for cross-server transfers (1Gbps+ recommended)
 
-When source and destination are on different servers:
+### Performance Tuning
 
-1. **Schema Transfer**: Extracts and recreates table structures, indexes, and constraints
-2. **Data Transfer**: Transfers data table-by-table with configurable parallelism
-3. **Progress Monitoring**: Real-time feedback on transfer progress
-4. **Error Recovery**: Robust handling of connection issues and data conflicts
-
-## Performance Considerations
-
-### Same-Server Performance
-- **Speed**: Near-instantaneous for small databases, scales with storage I/O
-- **Resources**: Minimal CPU/memory overhead  
-- **Method**: Uses PostgreSQL's `CREATE DATABASE ... WITH TEMPLATE` for maximum efficiency
-- **Limitations**: Both databases must be on same PostgreSQL instance
-
-### Cross-Server Performance Optimizations
-The tool implements several performance optimizations for cross-server forks:
-
-#### Database-Level Optimizations
-- **WAL Optimization**: Temporarily disables synchronous commits during bulk loading
-- **Memory Settings**: Increases buffer sizes for faster writes
-- **Checkpoint Tuning**: Optimizes checkpoint behavior for bulk operations
-
-#### Data Transfer Optimizations  
-- **COPY Protocol**: Uses PostgreSQL's native COPY for maximum throughput (10-50x faster than INSERT)
-- **Streaming Transfer**: Data streams directly from source to destination without intermediate storage
-- **Parallel Processing**: Multiple tables transferred simultaneously with configurable concurrency
-- **Binary Format**: Uses efficient CSV format with optimized delimiters
-
-#### Network Optimizations
-- **Connection Pooling**: Reuses database connections across table transfers
-- **Pipelining**: Overlaps read and write operations for continuous data flow
-- **Batching**: Large chunk sizes reduce network round trips
-
-### Recommended Settings
-
-| Database Size | Max Connections | Chunk Size | Expected Speed* |
-|---------------|----------------|------------|----------------|
-| < 1GB        | 2-4            | 1000       | 2-10 minutes   |
-| 1-10GB       | 4-8            | 2000       | 5-30 minutes   |
-| 10-100GB     | 8-16           | 5000       | 30-180 minutes |
-| > 100GB      | 16-32          | 10000      | 3-12 hours     |
-
-*Speed estimates for cross-server transfers on typical cloud infrastructure (1Gbps network)
-
-#### Performance Tips
-- **Use Read-Only Source User**: Creates a dedicated read-only user for maximum safety
-- **High-Performance Config**: See `examples/performance-config.yaml` for optimized settings
-- **Network Bandwidth**: Performance scales linearly with network speed between servers
-- **Exclude Large Tables**: Use `exclude_tables` to skip audit logs and temporary data
-- **Monitor Progress**: Use `--log-level debug` to see detailed transfer progress
+```bash
+# High-performance configuration for large databases
+postgres-db-fork fork \
+  --max-connections 8 \
+  --chunk-size 5000 \
+  --exclude-tables "audit_logs,temp_*" \
+  --timeout 2h
+```
 
 ## Use Cases
 
-### Development Workflows
-- Create development copies of production data
-- Set up staging environments
-- Isolate feature development with real data
-
-### Testing and QA
-- Create test databases with production-like data
-- Validate migrations before production deployment
-- Performance testing with realistic datasets
-
-### Data Analytics
-- Create analytical copies without affecting production
-- Historical snapshots for reporting
-- Data science experimentation
-
-### Disaster Recovery
-- Create backup copies on different infrastructure
-- Geographic distribution of data
-- Migration between cloud providers
-
-## Troubleshooting
-
-### Common Issues
-
-**Connection Errors**
-```bash
-# Test connectivity first
-psql -h hostname -U username -d database_name
-```
-
-**Permission Errors**
-- Ensure user has `CREATEDB` privilege for same-server forks
-- Verify user can connect to both source and destination
-
-**Memory Issues**
-- Reduce `--chunk-size` for large tables
-- Decrease `--max-connections` to reduce memory usage
-
-**Timeout Issues**
-- Increase `--timeout` for very large databases
-- Consider using `--schema-only` first, then `--data-only`
-
-### Logging
-
-Enable debug logging for detailed operation information:
+### 1. PR Preview Databases
 
 ```bash
-postgres-db-fork fork --log-level debug --source-db mydb --target-db mycopy
+# Automatically create preview databases for each PR
+export PGFORK_TARGET_DATABASE="myapp_pr_{{.PR_NUMBER}}"
+postgres-db-fork fork --output-format json
 ```
 
-## Security Considerations
+### 2. Development Environment Setup
 
-### Source Database Access
-- **Read-Only Required**: The tool only needs **SELECT** permissions on the source database
-- **No Write Operations**: Source database is never modified during fork operations
-- **Dedicated User**: Create a dedicated read-only user for maximum security:
-
-```sql
--- Create read-only user for database forking
-CREATE USER fork_reader WITH PASSWORD 'secure_password';
-GRANT CONNECT ON DATABASE your_database TO fork_reader;
-GRANT USAGE ON SCHEMA public TO fork_reader;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO fork_reader;
-GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO fork_reader;
-
--- For future tables
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO fork_reader;
+```bash
+# Copy production to local development
+postgres-db-fork fork \
+  --source-host prod.example.com \
+  --source-db myapp_prod \
+  --dest-host localhost \
+  --target-db myapp_dev \
+  --exclude-tables "audit_logs,user_sessions"
 ```
 
-### General Security
-- Store passwords in configuration files with appropriate file permissions (600)
-- Use environment variables for sensitive credentials
-- Consider using PostgreSQL's `.pgpass` file for password management
-- Enable SSL connections in production environments
-- Use connection limits and timeouts to prevent resource exhaustion
+### 3. Staging Refresh
+
+```bash
+# Update staging with latest production data
+postgres-db-fork fork \
+  --source-db myapp_prod \
+  --target-db myapp_staging \
+  --drop-if-exists
+```
+
+### 4. Testing Database Setup
+
+```bash
+# Create test database with schema only
+postgres-db-fork fork \
+  --source-db myapp_staging \
+  --target-db myapp_test \
+  --schema-only \
+  --drop-if-exists
+```
+
+## Advanced Features
+
+### Progress Monitoring
+
+Monitor long-running transfers with real-time progress and ETA:
+
+```bash
+# Write progress to file for CI/CD monitoring
+postgres-db-fork fork \
+  --source-db large_prod_db \
+  --target-db dev_copy \
+  --progress-file /tmp/transfer-progress.json \
+  --output-format json
+```
+
+Progress file format:
+
+```json
+{
+  "phase": "data",
+  "overall": {
+    "percent_complete": 45.2,
+    "tables_completed": 12,
+    "tables_total": 25,
+    "rows_completed": 1250000,
+    "rows_total": 2765000,
+    "duration": "5m30s"
+  },
+  "current_table": {
+    "name": "user_events",
+    "percent_complete": 78.5,
+    "rows_completed": 785000,
+    "rows_total": 1000000,
+    "speed": "15000 rows/sec"
+  },
+  "estimated_time_remaining": "2m15s"
+}
+```
+
+### Job Resumption
+
+Automatically resume interrupted transfers for large databases:
+
+```bash
+# Start transfer with specific job ID
+postgres-db-fork fork \
+  --job-id "prod-to-staging-$(date +%Y%m%d)" \
+  --source-db prod_db \
+  --target-db staging_db
+
+# Resume if interrupted
+postgres-db-fork fork --resume --job-id "prod-to-staging-20241201"
+```
+
+Job state includes:
+
+- Completed tables
+- Failed tables with error details
+- Current transfer phase
+- Configuration validation
+
+### Configuration Validation
+
+Prevent CI/CD failures with pre-flight checks:
+
+```bash
+# Validate before running in CI/CD
+postgres-db-fork validate \
+  --source-host $PROD_HOST \
+  --source-db $SOURCE_DB \
+  --dest-host $STAGING_HOST \
+  --target-db $TARGET_DB \
+  --output-format json
+
+# Quick connectivity test
+postgres-db-fork validate --quick --source-host prod.example.com
+```
+
+### Database Discovery
+
+Find and manage databases programmatically:
+
+```bash
+# List all PR databases with sizes
+postgres-db-fork list \
+  --pattern "myapp_pr_*" \
+  --show-size \
+  --show-age \
+  --output-format json
+
+# Check if specific database exists (exit code 0 if found)
+postgres-db-fork list --pattern "myapp_pr_123" --quiet
+
+# Count databases matching pattern
+postgres-db-fork list --pattern "temp_*" --count-only
+```
+
+### Enhanced Error Handling
+
+Intelligent retry logic with exponential backoff:
+
+- **Connection errors**: Retry with increasing delays
+- **Resource limits**: Wait for resources to become available
+- **Timeout errors**: Retry with longer timeouts
+- **Permission errors**: Fail immediately (non-retryable)
+
+```bash
+# Custom retry configuration
+postgres-db-fork fork \
+  --retry-attempts 5 \
+  --retry-delay 2s \
+  --timeout 60m
+```
+
+## Safety Features
+
+- **Read-Only Source Access**: Tool only requires SELECT permissions on source database
+- **Connection Validation**: Validates database connections before starting operations
+- **Atomic Operations**: Template-based same-server cloning is atomic
+- **Progress Monitoring**: Real-time progress reporting for long-running operations
+- **Error Recovery**: Robust error handling with detailed error messages
+
+## Performance Benchmarks
+
+| Database Size | Same-Server (Template) | Cross-Server (COPY) | Traditional pg_dump/restore |
+|---------------|------------------------|---------------------|---------------------------|
+| 100MB         | 5-15 seconds          | 30-60 seconds       | 2-5 minutes              |
+| 1GB           | 30-60 seconds         | 2-10 minutes        | 10-30 minutes            |
+| 10GB          | 2-5 minutes           | 15-45 minutes       | 1-3 hours                |
+| 100GB+        | 10-30 minutes         | 3-12 hours          | 6-24+ hours              |
+
+*Performance varies based on hardware, network, and database complexity.*
+
+## Exit Codes
+
+- `0` - Success
+- `1` - Error (configuration, connection, or operation failure)
+
+Perfect for CI/CD automation and error handling.
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+3. Add tests for new functionality
+4. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
 Inspired by database forking implementations from:
+
 - [Heroku Postgres Fork](https://devcenter.heroku.com/articles/heroku-postgres-fork)
 - [DoltHub Database Forks](https://www.dolthub.com/blog/2022-07-29-database-forks/)
 - [Cybertec PostgreSQL Forking](https://www.cybertec-postgresql.com/en/forking-databases-the-art-of-copying-without-copying/)
 
-Designed to work with DigitalOcean Managed PostgreSQL and other hosted PostgreSQL services. 
+Designed to work with DigitalOcean Managed PostgreSQL and other hosted PostgreSQL services.

@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: "Wait for CI to complete"
+        id: ci-wait
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -25,14 +26,24 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
 
+      - name: "Close PR if CI failed"
+        if: steps.ci-wait.outputs.conclusion != 'success'
+        run: |
+          gh pr comment "$PR_URL" --body "CI checks failed. Closing this PR. Please investigate the root cause and manually create a new PR if necessary."
+          gh pr close "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: "Get PR info"
         id: pr-info
+        if: steps.ci-wait.outputs.conclusion == 'success'
         uses: dependabot/fetch-metadata@v2.2.0
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: "Auto-approve minor and patch updates"
-        if: steps.pr-info.outputs.update-type == 'version-update:semver-minor' || steps.pr-info.outputs.update-type == 'version-update:semver-patch'
+        if: steps.ci-wait.outputs.conclusion == 'success' && (steps.pr-info.outputs.update-type == 'version-update:semver-minor' || steps.pr-info.outputs.update-type == 'version-update:semver-patch')
         run: |
           gh pr review --approve "$PR_URL"
         env:
@@ -40,7 +51,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "Auto-merge minor and patch updates"
-        if: steps.pr-info.outputs.update-type == 'version-update:semver-minor' || steps.pr-info.outputs.update-type == 'version-update:semver-patch'
+        if: steps.ci-wait.outputs.conclusion == 'success' && (steps.pr-info.outputs.update-type == 'version-update:semver-minor' || steps.pr-info.outputs.update-type == 'version-update:semver-patch')
         run: |
           gh pr merge --auto --squash "$PR_URL"
         env:
@@ -48,7 +59,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "Comment on major updates"
-        if: steps.pr-info.outputs.update-type == 'version-update:semver-major'
+        if: steps.ci-wait.outputs.conclusion == 'success' && steps.pr-info.outputs.update-type == 'version-update:semver-major'
         run: |
           gh pr comment "$PR_URL" --body "🚨 This is a major version update. Please review manually before merging."
         env:

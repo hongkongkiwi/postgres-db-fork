@@ -700,12 +700,12 @@ jobs:
             TOTAL_TESTS=6
             PASSED_TESTS=0
 
-            if [ "${{ needs.build-action.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
-            if [ "${{ needs.test-action-basic.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
-            if [ "${{ needs.test-action-database-ops.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
-            if [ "${{ needs.test-action-config-file.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
-            if [ "${{ needs.test-action-error-handling.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
-            if [ "${{ needs.test-action-templates.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
+            if [ "${{ needs.build-action.result }}" = "success" ]; then PASSED_TESTS=$((PASSED_TESTS + 1)); fi
+            if [ "${{ needs.test-action-basic.result }}" = "success" ]; then PASSED_TESTS=$((PASSED_TESTS + 1)); fi
+            if [ "${{ needs.test-action-database-ops.result }}" = "success" ]; then PASSED_TESTS=$((PASSED_TESTS + 1)); fi
+            if [ "${{ needs.test-action-config-file.result }}" = "success" ]; then PASSED_TESTS=$((PASSED_TESTS + 1)); fi
+            if [ "${{ needs.test-action-error-handling.result }}" = "success" ]; then PASSED_TESTS=$((PASSED_TESTS + 1)); fi
+            if [ "${{ needs.test-action-templates.result }}" = "success" ]; then PASSED_TESTS=$((PASSED_TESTS + 1)); fi
 
             echo "**Overall Result:** $PASSED_TESTS/$TOTAL_TESTS tests passed"
             echo ""

@@ -218,6 +218,7 @@ jobs:
 
           # Run the docker action using the same network as PostgreSQL service
           # pragma: allowlist secret
+          set +e  # Don't exit on error - we want to capture it
           docker run --rm --network "$PG_NETWORK" \
             -e PGFORK_VAR_PR_NUMBER="${PR_NUMBER}" \
             -e PGFORK_VAR_BRANCH="${BRANCH_NAME}" \
@@ -242,7 +243,19 @@ jobs:
             --drop-if-exists \
             --max-connections 4 \
             --timeout 5m \
-            --output-format json > fork_result.json
+            --output-format json > fork_result.json 2>&1
+
+          DOCKER_EXIT_CODE=$?
+          set -e  # Re-enable exit on error
+
+          echo "Docker command exit code: $DOCKER_EXIT_CODE"
+          echo "Fork operation output:"
+          cat fork_result.json || echo "No fork_result.json file created"
+
+          if [ $DOCKER_EXIT_CODE -ne 0 ]; then
+            echo "❌ Docker command failed with exit code $DOCKER_EXIT_CODE"
+            exit 1
+          fi
 
           # Extract outputs from the result
           RESULT=$(jq -r '.success // "false"' fork_result.json)
@@ -428,7 +441,7 @@ jobs:
           mkdir -p test-config
           cat > test-config/fork-config.yaml <<EOF
           source:
-            host: 127.0.0.1
+            host: postgres
             port: 5432
             user: testuser
             password: testpass123 # pragma: allowlist secret
@@ -436,7 +449,7 @@ jobs:
             sslmode: disable
 
           destination:
-            host: 127.0.0.1
+            host: postgres
             port: 5432
             user: testuser
             password: testpass123 # pragma: allowlist secret

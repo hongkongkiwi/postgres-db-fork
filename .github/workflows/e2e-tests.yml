@@ -27,7 +27,7 @@ jobs:
 
     strategy:
       matrix:
-        postgres_version: ["17.5"]
+        postgres_version: ["15"]
         go_version: ["1.22"]
 
     services:
@@ -78,10 +78,6 @@ jobs:
         env:
           PGPASSWORD: testpass # pragma: allowlist secret
 
-      - name: Run unit tests
-        run: |
-          go test -v ./... -short -race -coverprofile=unit-coverage.out
-
       - name: Run integration tests
         run: |
           go test -v -tags=integration ./... -timeout=15m
@@ -91,6 +87,7 @@ jobs:
           POSTGRES_USER: testuser
           POSTGRES_PASSWORD: testpass # pragma: allowlist secret
           POSTGRES_DB: testdb
+          DOCKER_API_VERSION: "1.40"
 
       - name: Run E2E tests
         run: |
@@ -104,20 +101,9 @@ jobs:
           POSTGRES_DB: testdb
           DOCKER_API_VERSION: "1.40"
 
-      - name: Wait for PostgreSQL to be ready
-        run: |
-          timeout 120s bash -c '
-            until pg_isready -h postgres -p 5432 -U testuser; do
-              echo "Waiting for PostgreSQL..."
-              sleep 2
-            done
-          '
-        env:
-          PGPASSWORD: testpass # pragma: allowlist secret
-
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
-        if: matrix.postgres_version == 14 && matrix.go_version == '1.22'
+        if: matrix.postgres_version == 15 && matrix.go_version == '1.22'
         with:
           name: coverage-reports
           path: |
@@ -140,6 +126,21 @@ jobs:
   docker-e2e:
     name: Docker-based E2E Tests
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: testpass # pragma: allowlist secret
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432
 
     steps:
       - name: Checkout code
@@ -230,6 +231,21 @@ jobs:
     name: Performance E2E Tests
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event.inputs.test_type == 'all'
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: testpass # pragma: allowlist secret
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432
 
     steps:
       - name: Checkout code

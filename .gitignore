@@ -19,7 +19,7 @@ go.work
 go.work.sum
 
 # Build artifacts
-/bin/
+/bin/**/*
 /dist/
 /build/
 postgres-db-fork

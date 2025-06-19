@@ -2,6 +2,18 @@
 
 set -e
 
+# Debug: Print environment variables for troubleshooting
+echo "=== DEBUG: Environment Variables ==="
+echo "COMMAND: $1"
+echo "CONFIG_FILE: $CONFIG_FILE"
+echo "PGFORK_SOURCE_HOST: $PGFORK_SOURCE_HOST"
+echo "PGFORK_SOURCE_PORT: $PGFORK_SOURCE_PORT"
+echo "PGFORK_SOURCE_USER: $PGFORK_SOURCE_USER"
+echo "PGFORK_SOURCE_DATABASE: $PGFORK_SOURCE_DATABASE"
+echo "PGFORK_SOURCE_SSLMODE: $PGFORK_SOURCE_SSLMODE"
+echo "PGFORK_TIMEOUT: $PGFORK_TIMEOUT"
+echo "=================================="
+
 # Function to output to GitHub Actions
 github_output() {
     local name="$1"

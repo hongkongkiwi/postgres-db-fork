@@ -213,7 +213,8 @@ jobs:
         id: fork-test
         run: |
           # Get the Docker network ID that the PostgreSQL service is running on
-          PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
+          PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} \
+            --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
           echo "PostgreSQL container network: $PG_NETWORK"
 
           # Build the command arguments as an array to avoid shell parsing issues
@@ -344,7 +345,8 @@ jobs:
       - name: Test validate command
         run: |
           # Get the Docker network ID that the PostgreSQL service is running on
-          PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
+          PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} \
+            --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
 
           # Build the command arguments as an array to avoid shell parsing issues
           DOCKER_CMD=(
@@ -392,7 +394,8 @@ jobs:
       - name: Test cleanup command
         run: |
           # Get the Docker network ID that the PostgreSQL service is running on
-          PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
+          PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} \
+            --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
 
           # Build the command arguments as an array to avoid shell parsing issues
           DOCKER_CMD=(
@@ -500,7 +503,8 @@ jobs:
       - name: Test action with config file
         run: |
           # Get the Docker network ID that the PostgreSQL service is running on
-          PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
+          PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} \
+            --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
           echo "PostgreSQL container network: $PG_NETWORK"
 
           # Build the command arguments as an array to avoid shell parsing issues
@@ -614,7 +618,8 @@ jobs:
       - name: Test template variables in dry-run mode
         run: |
           # Get the Docker network ID that the PostgreSQL service is running on
-          PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
+          PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} \
+            --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
           echo "PostgreSQL container network: $PG_NETWORK"
 
           # Build the command arguments as an array to avoid shell parsing issues
@@ -689,12 +694,20 @@ jobs:
                 *) echo "❌ Failed" ;;
               esac
             }
-            echo "| Build Action | $(get_status '${{ needs.build-action.result }}') |"
-            echo "| Basic Commands | $(get_status '${{ needs.test-action-basic.result }}') |"
-            echo "| Database Operations | $(get_status '${{ needs.test-action-database-ops.result }}') |"
-            echo "| Config File | $(get_status '${{ needs.test-action-config-file.result }}') |"
-            echo "| Error Handling | $(get_status '${{ needs.test-action-error-handling.result }}') |"
-            echo "| Template Variables | $(get_status '${{ needs.test-action-templates.result }}') |"
+            # Show test results in table format
+            BUILD_STATUS=$(get_status '${{ needs.build-action.result }}')
+            BASIC_STATUS=$(get_status '${{ needs.test-action-basic.result }}')
+            DB_OPS_STATUS=$(get_status '${{ needs.test-action-database-ops.result }}')
+            CONFIG_STATUS=$(get_status '${{ needs.test-action-config-file.result }}')
+            ERROR_STATUS=$(get_status '${{ needs.test-action-error-handling.result }}')
+            TEMPLATE_STATUS=$(get_status '${{ needs.test-action-templates.result }}')
+
+            echo "| Build Action | $BUILD_STATUS |"
+            echo "| Basic Commands | $BASIC_STATUS |"
+            echo "| Database Operations | $DB_OPS_STATUS |"
+            echo "| Config File | $CONFIG_STATUS |"
+            echo "| Error Handling | $ERROR_STATUS |"
+            echo "| Template Variables | $TEMPLATE_STATUS |"
             echo ""
 
             TOTAL_TESTS=6

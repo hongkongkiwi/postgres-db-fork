@@ -367,6 +367,7 @@ jobs:
             -e "PGFORK_DEST_PASSWORD=testpass123"
             -e "PGFORK_DEST_SSLMODE=disable"
             -e "PGFORK_TARGET_DATABASE=${{ steps.fork-test.outputs.target-database }}"
+            -e "PGFORK_DROP_IF_EXISTS=true"
             -e "PGFORK_OUTPUT_FORMAT=json"
             postgres-db-fork-action:test
             validate

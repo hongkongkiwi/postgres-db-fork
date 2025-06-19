@@ -70,7 +70,7 @@ jobs:
       - name: Wait for PostgreSQL to be ready
         run: |
           timeout 120s bash -c '
-            until pg_isready -h postgres -p 5432 -U testuser; do
+            until pg_isready -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser; do
               echo "Waiting for PostgreSQL..."
               sleep 2
             done
@@ -82,8 +82,8 @@ jobs:
         run: |
           go test -v -tags=integration ./... -timeout=15m
         env:
-          POSTGRES_HOST: postgres
-          POSTGRES_PORT: "5432"
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
           POSTGRES_USER: testuser
           POSTGRES_PASSWORD: testpass # pragma: allowlist secret
           POSTGRES_DB: testdb
@@ -94,8 +94,8 @@ jobs:
           chmod +x scripts/run-e2e-tests.sh
           ./scripts/run-e2e-tests.sh coverage
         env:
-          POSTGRES_HOST: postgres
-          POSTGRES_PORT: "5432"
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
           POSTGRES_USER: testuser
           POSTGRES_PASSWORD: testpass # pragma: allowlist secret
           POSTGRES_DB: testdb
@@ -170,7 +170,7 @@ jobs:
       - name: Wait for PostgreSQL to be ready
         run: |
           timeout 120s bash -c '
-            until pg_isready -h postgres -p 5432 -U testuser; do
+            until pg_isready -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser; do
               echo "Waiting for PostgreSQL..."
               sleep 2
             done
@@ -183,8 +183,8 @@ jobs:
           chmod +x scripts/run-e2e-tests.sh
           ./scripts/run-e2e-tests.sh coverage
         env:
-          POSTGRES_HOST: postgres
-          POSTGRES_PORT: "5432"
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
           POSTGRES_USER: testuser
           POSTGRES_PASSWORD: testpass # pragma: allowlist secret
           POSTGRES_DB: testdb
@@ -258,7 +258,7 @@ jobs:
       - name: Wait for PostgreSQL to be ready
         run: |
           timeout 120s bash -c '
-            until pg_isready -h postgres -p 5432 -U testuser; do
+            until pg_isready -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser; do
               echo "Waiting for PostgreSQL..."
               sleep 2
             done
@@ -268,10 +268,13 @@ jobs:
 
       - name: Run performance tests
         run: |
-          # Run e2e tests with performance benchmarks
-          go test -v -tags=e2e -bench=. -benchmem ./... -timeout=45m
+          go test -v -tags=performance ./... -timeout=60m
         env:
-          POSTGRES_E2E_TEST: "true"
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass # pragma: allowlist secret
+          POSTGRES_DB: testdb
           DOCKER_API_VERSION: "1.40"
 
       - name: Upload performance results

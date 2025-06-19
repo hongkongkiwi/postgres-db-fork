@@ -355,6 +355,12 @@ jobs:
             -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
             -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
             -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            -e "PGFORK_SOURCE_HOST=postgres"
+            -e "PGFORK_SOURCE_PORT=5432"
+            -e "PGFORK_SOURCE_USER=testuser"
+            -e "PGFORK_SOURCE_PASSWORD=testpass123"
+            -e "PGFORK_SOURCE_DATABASE=source_db"
+            -e "PGFORK_SOURCE_SSLMODE=disable"
             -e "PGFORK_DEST_HOST=postgres"
             -e "PGFORK_DEST_PORT=5432"
             -e "PGFORK_DEST_USER=testuser"
@@ -403,6 +409,7 @@ jobs:
             -e "PGFORK_DEST_SSLMODE=disable"
             -e "PGFORK_TARGET_DATABASE=${{ steps.fork-test.outputs.target-database }}"
             -e "PGFORK_OUTPUT_FORMAT=json"
+            -e "PGFORK_CLEANUP_FORCE=true"
             postgres-db-fork-action:test
             cleanup
           )

@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17-rc-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres # pragma: allowlist secret
@@ -106,7 +106,7 @@ jobs:
     needs: [lint, test]
     services:
       postgres:
-        image: postgres:17-rc-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres # pragma: allowlist secret
@@ -162,7 +162,7 @@ jobs:
     needs: [lint, test]
     services:
       postgres:
-        image: postgres:17-rc-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres # pragma: allowlist secret

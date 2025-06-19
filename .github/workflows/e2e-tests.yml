@@ -27,7 +27,7 @@ jobs:
 
     strategy:
       matrix:
-        postgres_version: ["17-rc"]
+        postgres_version: ["17"]
         go_version: ["1.22"]
 
     services:
@@ -103,7 +103,7 @@ jobs:
 
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
-        if: matrix.postgres_version == '17-rc' && matrix.go_version == '1.22'
+        if: matrix.postgres_version == '17' && matrix.go_version == '1.22'
         with:
           name: coverage-reports
           path: |
@@ -129,7 +129,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-rc-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_PASSWORD: testpass # pragma: allowlist secret
           POSTGRES_USER: testuser
@@ -228,7 +228,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-rc-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_PASSWORD: testpass # pragma: allowlist secret
           POSTGRES_USER: testuser

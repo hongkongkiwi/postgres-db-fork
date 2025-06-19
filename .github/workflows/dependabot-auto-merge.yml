@@ -38,7 +38,7 @@ jobs:
       - name: "Get PR info"
         id: pr-info
         if: steps.ci-wait.outputs.conclusion == 'success'
-        uses: dependabot/fetch-metadata@v2.2.0
+        uses: dependabot/fetch-metadata@v2.4.0
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 

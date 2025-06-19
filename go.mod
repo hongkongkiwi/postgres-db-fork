@@ -1,6 +1,6 @@
 module github.com/hongkongkiwi/postgres-db-fork
 
-go 1.22
+go 1.23.0
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -54,7 +54,7 @@ require (
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/mod v0.12.0 // indirect
-	golang.org/x/sys v0.15.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

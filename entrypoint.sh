@@ -6,18 +6,6 @@ set -e
 unset PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PGSSLMODE
 unset POSTGRES_HOST POSTGRES_PORT POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB
 
-# Debug: Print environment variables for troubleshooting
-echo "=== DEBUG: Environment Variables ==="
-echo "COMMAND: $1"
-echo "CONFIG_FILE: $CONFIG_FILE"
-echo "PGFORK_SOURCE_HOST: $PGFORK_SOURCE_HOST"
-echo "PGFORK_SOURCE_PORT: $PGFORK_SOURCE_PORT"
-echo "PGFORK_SOURCE_USER: $PGFORK_SOURCE_USER"
-echo "PGFORK_SOURCE_DATABASE: $PGFORK_SOURCE_DATABASE"
-echo "PGFORK_SOURCE_SSLMODE: $PGFORK_SOURCE_SSLMODE"
-echo "PGFORK_TIMEOUT: $PGFORK_TIMEOUT"
-echo "=================================="
-
 # Function to output to GitHub Actions
 github_output() {
     local name="$1"
@@ -139,7 +127,7 @@ if [ "${COMMAND#--}" = "$COMMAND" ]; then
         fi
     fi
 
-    # Only add database connection flags if NOT using config file OR if explicitly overridden
+    # Only add database connection flags if NOT using config file
     if [ -z "$USING_CONFIG_FILE" ]; then
         # Add database connection flags for commands that need them
         if [ "$COMMAND" = "fork" ] || [ "$COMMAND" = "validate" ]; then

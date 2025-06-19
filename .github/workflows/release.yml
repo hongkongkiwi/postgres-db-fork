@@ -123,13 +123,22 @@ jobs:
             -o "dist/${BINARY_NAME}" \
             main.go
 
-          # Create archive
+      - name: Create archive (Unix)
+        if: matrix.goos != 'windows'
+        shell: bash
+        run: |
           cd dist
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            zip "${BINARY_NAME%.exe}.zip" "${BINARY_NAME}"
-          else
-            tar -czf "${BINARY_NAME}.tar.gz" "${BINARY_NAME}"
-          fi
+          BINARY_NAME="postgres-db-fork-${{ needs.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          tar -czf "${BINARY_NAME}.tar.gz" "${BINARY_NAME}"
+
+      - name: Create archive (Windows)
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        run: |
+          cd dist
+          $BINARY_NAME = "postgres-db-fork-${{ needs.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.exe"
+          $ARCHIVE_NAME = "postgres-db-fork-${{ needs.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
+          Compress-Archive -Path $BINARY_NAME -DestinationPath $ARCHIVE_NAME
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

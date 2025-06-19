@@ -1,11 +1,11 @@
 # Build stage
 FROM golang:1.22-alpine AS builder
 
-# Install build dependencies with pinned versions
+# Install build dependencies
 RUN apk add --no-cache \
-    git=2.43.6-r0 \
-    ca-certificates=20241121-r1 \
-    tzdata=2025b-r0
+    git \
+    ca-certificates \
+    tzdata
 
 # Set working directory
 WORKDIR /app
@@ -29,12 +29,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # Runtime stage
 FROM alpine:3.19
 
-# Install runtime dependencies with pinned versions
+# Install runtime dependencies
 RUN apk add --no-cache \
-    ca-certificates=20241121-r1 \
-    postgresql15-client=15.13-r0 \
-    tzdata=2025b-r0 \
-    jq=1.7.1-r0 \
+    ca-certificates \
+    postgresql15-client \
+    tzdata \
+    jq \
     && rm -rf /var/cache/apk/*
 
 # Create non-root user

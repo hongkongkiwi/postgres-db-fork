@@ -163,7 +163,7 @@ func getConnectionParams(cmd *cobra.Command) (map[string]string, error) {
 	if user, _ := cmd.Flags().GetString("user"); user != "" {
 		params["user"] = user
 	} else {
-		params["user"] = viper.GetString("source.user")
+		params["user"] = viper.GetString("source.username")
 	}
 
 	if database, _ := cmd.Flags().GetString("database"); database != "" {

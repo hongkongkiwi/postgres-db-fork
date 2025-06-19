@@ -216,19 +216,40 @@ jobs:
           PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
           echo "PostgreSQL container network: $PG_NETWORK"
 
+          # Build the command arguments as an array to avoid shell parsing issues
+          DOCKER_CMD=(
+            docker run --rm --network "$PG_NETWORK"
+            -e "PGFORK_VAR_PR_NUMBER=${PR_NUMBER}"
+            -e "PGFORK_VAR_BRANCH=${BRANCH_NAME}"
+            -e "PGFORK_VAR_COMMIT_SHA=${{ github.sha }}"
+            -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
+            -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
+            -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            postgres-db-fork-action:test
+            fork
+            --source-host postgres
+            --source-port 5432
+            --source-user testuser
+            --source-password testpass123
+            --source-db source_db
+            --source-sslmode disable
+            --dest-host postgres
+            --dest-port 5432
+            --dest-user testuser
+            --dest-password testpass123
+            --dest-sslmode disable
+            --target-db "test_pr_${{ github.run_number }}"
+            --drop-if-exists
+            --max-connections 4
+            --timeout 5m
+            --output-format json
+          )
+
           # Run the docker action using the same network as PostgreSQL service
           # pragma: allowlist secret
           set +e  # Don't exit on error - we want to capture it
-          docker run --rm --network "$PG_NETWORK" \
-            -e PGFORK_VAR_PR_NUMBER="${PR_NUMBER}" \
-            -e PGFORK_VAR_BRANCH="${BRANCH_NAME}" \
-            -e PGFORK_VAR_COMMIT_SHA="${{ github.sha }}" \
-            -e PGFORK_VAR_COMMIT_SHORT="${{ github.sha }}" \
-            -e PGFORK_VAR_RUN_ID="${{ github.run_id }}" \
-            -e PGFORK_VAR_RUN_NUMBER="${{ github.run_number }}" \
-            postgres-db-fork-action:test \
-            fork --source-host postgres --source-port 5432 --source-user testuser --source-password testpass123 --source-db source_db --source-sslmode disable --dest-host postgres --dest-port 5432 --dest-user testuser --dest-password testpass123 --dest-sslmode disable --target-db "test_pr_${{ github.run_number }}" --drop-if-exists --max-connections 4 --timeout 5m --output-format json > fork_result.json 2>&1
-
+          echo "Running command: ${DOCKER_CMD[*]}"
+          "${DOCKER_CMD[@]}" > fork_result.json 2>&1
           DOCKER_EXIT_CODE=$?
           set -e  # Re-enable exit on error
 
@@ -320,17 +341,30 @@ jobs:
           # Get the Docker network ID that the PostgreSQL service is running on
           PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
 
+          # Build the command arguments as an array to avoid shell parsing issues
+          DOCKER_CMD=(
+            docker run --rm --network "$PG_NETWORK"
+            -e "PGFORK_VAR_PR_NUMBER=${PR_NUMBER}"
+            -e "PGFORK_VAR_BRANCH=${BRANCH_NAME}"
+            -e "PGFORK_VAR_COMMIT_SHA=${{ github.sha }}"
+            -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
+            -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
+            -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            postgres-db-fork-action:test
+            validate
+            --dest-host postgres
+            --dest-port 5432
+            --dest-user testuser
+            --dest-password testpass123
+            --dest-sslmode disable
+            --target-db "${{ steps.fork-test.outputs.target-database }}"
+            --output-format json
+          )
+
           # Run the docker action using the same network as PostgreSQL service
           # pragma: allowlist secret
-          docker run --rm --network "$PG_NETWORK" \
-            -e PGFORK_VAR_PR_NUMBER="${PR_NUMBER}" \
-            -e PGFORK_VAR_BRANCH="${BRANCH_NAME}" \
-            -e PGFORK_VAR_COMMIT_SHA="${{ github.sha }}" \
-            -e PGFORK_VAR_COMMIT_SHORT="${{ github.sha }}" \
-            -e PGFORK_VAR_RUN_ID="${{ github.run_id }}" \
-            -e PGFORK_VAR_RUN_NUMBER="${{ github.run_number }}" \
-            postgres-db-fork-action:test \
-            validate --dest-host postgres --dest-port 5432 --dest-user testuser --dest-password testpass123 --dest-sslmode disable --target-db "${{ steps.fork-test.outputs.target-database }}" --output-format json
+          echo "Running command: ${DOCKER_CMD[*]}"
+          "${DOCKER_CMD[@]}"
         env:
           # Pass GitHub context variables as environment variables
           PGFORK_VAR_PR_NUMBER: ${{ github.event.number || github.run_number }}
@@ -348,17 +382,30 @@ jobs:
           # Get the Docker network ID that the PostgreSQL service is running on
           PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
 
+          # Build the command arguments as an array to avoid shell parsing issues
+          DOCKER_CMD=(
+            docker run --rm --network "$PG_NETWORK"
+            -e "PGFORK_VAR_PR_NUMBER=${PR_NUMBER}"
+            -e "PGFORK_VAR_BRANCH=${BRANCH_NAME}"
+            -e "PGFORK_VAR_COMMIT_SHA=${{ github.sha }}"
+            -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
+            -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
+            -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            postgres-db-fork-action:test
+            cleanup
+            --dest-host postgres
+            --dest-port 5432
+            --dest-user testuser
+            --dest-password testpass123
+            --dest-sslmode disable
+            --target-db "${{ steps.fork-test.outputs.target-database }}"
+            --output-format json
+          )
+
           # Run the docker action using the same network as PostgreSQL service
           # pragma: allowlist secret
-          docker run --rm --network "$PG_NETWORK" \
-            -e PGFORK_VAR_PR_NUMBER="${PR_NUMBER}" \
-            -e PGFORK_VAR_BRANCH="${BRANCH_NAME}" \
-            -e PGFORK_VAR_COMMIT_SHA="${{ github.sha }}" \
-            -e PGFORK_VAR_COMMIT_SHORT="${{ github.sha }}" \
-            -e PGFORK_VAR_RUN_ID="${{ github.run_id }}" \
-            -e PGFORK_VAR_RUN_NUMBER="${{ github.run_number }}" \
-            postgres-db-fork-action:test \
-            cleanup --dest-host postgres --dest-port 5432 --dest-user testuser --dest-password testpass123 --dest-sslmode disable --target-db "${{ steps.fork-test.outputs.target-database }}" --output-format json
+          echo "Running command: ${DOCKER_CMD[*]}"
+          "${DOCKER_CMD[@]}"
         env:
           # Pass GitHub context variables as environment variables
           PGFORK_VAR_PR_NUMBER: ${{ github.event.number || github.run_number }}
@@ -443,18 +490,26 @@ jobs:
           PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
           echo "PostgreSQL container network: $PG_NETWORK"
 
+          # Build the command arguments as an array to avoid shell parsing issues
+          DOCKER_CMD=(
+            docker run --rm --network "$PG_NETWORK"
+            -v "${PWD}/test-config:/app/test-config"
+            -e "PGFORK_VAR_PR_NUMBER=${PR_NUMBER}"
+            -e "PGFORK_VAR_BRANCH=${BRANCH_NAME}"
+            -e "PGFORK_VAR_COMMIT_SHA=${{ github.sha }}"
+            -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
+            -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
+            -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            postgres-db-fork-action:test
+            test-connection
+            --config test-config/fork-config.yaml
+            --output-format json
+          )
+
           # Run the docker action using the same network as PostgreSQL service
           # pragma: allowlist secret
-          docker run --rm --network "$PG_NETWORK" \
-            -v "${PWD}/test-config:/app/test-config" \
-            -e PGFORK_VAR_PR_NUMBER="${PR_NUMBER}" \
-            -e PGFORK_VAR_BRANCH="${BRANCH_NAME}" \
-            -e PGFORK_VAR_COMMIT_SHA="${{ github.sha }}" \
-            -e PGFORK_VAR_COMMIT_SHORT="${{ github.sha }}" \
-            -e PGFORK_VAR_RUN_ID="${{ github.run_id }}" \
-            -e PGFORK_VAR_RUN_NUMBER="${{ github.run_number }}" \
-            postgres-db-fork-action:test \
-            test-connection --config test-config/fork-config.yaml --output-format json
+          echo "Running command: ${DOCKER_CMD[*]}"
+          "${DOCKER_CMD[@]}"
         env:
           # Pass GitHub context variables as environment variables
           PGFORK_VAR_PR_NUMBER: ${{ github.event.number || github.run_number }}
@@ -549,17 +604,38 @@ jobs:
           PG_NETWORK=$(docker inspect ${{ job.services.postgres.id }} --format='{{range $net := .NetworkSettings.Networks}}{{$net.NetworkID}}{{end}}')
           echo "PostgreSQL container network: $PG_NETWORK"
 
+          # Build the command arguments as an array to avoid shell parsing issues
+          DOCKER_CMD=(
+            docker run --rm --network "$PG_NETWORK"
+            -e "PGFORK_VAR_PR_NUMBER=${PR_NUMBER}"
+            -e "PGFORK_VAR_BRANCH=${BRANCH_NAME}"
+            -e "PGFORK_VAR_COMMIT_SHA=${{ github.sha }}"
+            -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
+            -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
+            -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            postgres-db-fork-action:test
+            fork
+            --source-host postgres
+            --source-port 5432
+            --source-user testuser
+            --source-password testpass123
+            --source-db testdb
+            --source-sslmode disable
+            --dest-host postgres
+            --dest-port 5432
+            --dest-user testuser
+            --dest-password testpass123
+            --dest-sslmode disable
+            --target-db "app_${BRANCH_NAME}_${{ github.run_id }}_pr${PR_NUMBER}"
+            --drop-if-exists
+            --dry-run
+            --output-format json
+          )
+
           # Run the docker action using the same network as PostgreSQL service
           # pragma: allowlist secret
-          docker run --rm --network "$PG_NETWORK" \
-            -e PGFORK_VAR_PR_NUMBER="${PR_NUMBER}" \
-            -e PGFORK_VAR_BRANCH="${BRANCH_NAME}" \
-            -e PGFORK_VAR_COMMIT_SHA="${{ github.sha }}" \
-            -e PGFORK_VAR_COMMIT_SHORT="${{ github.sha }}" \
-            -e PGFORK_VAR_RUN_ID="${{ github.run_id }}" \
-            -e PGFORK_VAR_RUN_NUMBER="${{ github.run_number }}" \
-            postgres-db-fork-action:test \
-            fork --source-host postgres --source-port 5432 --source-user testuser --source-password testpass123 --source-db testdb --source-sslmode disable --dest-host postgres --dest-port 5432 --dest-user testuser --dest-password testpass123 --dest-sslmode disable --target-db "app_${BRANCH_NAME}_${{ github.run_id }}_pr${PR_NUMBER}" --drop-if-exists --dry-run --output-format json
+          echo "Running command: ${DOCKER_CMD[*]}"
+          "${DOCKER_CMD[@]}"
         env:
           # Pass GitHub context variables as environment variables
           PGFORK_VAR_PR_NUMBER: ${{ github.event.number || 123 }}

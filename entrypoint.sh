@@ -173,7 +173,7 @@ if [ "${COMMAND#--}" = "$COMMAND" ]; then
             ARGS="$ARGS --pattern $PGFORK_TARGET_DATABASE"
         fi
     elif [ "$COMMAND" = "test-connection" ]; then
-        # test-connection uses different flag names
+        # test-connection uses different flag names and does NOT support --password flag
         if [ -n "$PGFORK_SOURCE_HOST" ]; then
             ARGS="$ARGS --host $PGFORK_SOURCE_HOST"
         fi
@@ -183,9 +183,8 @@ if [ "${COMMAND#--}" = "$COMMAND" ]; then
         if [ -n "$PGFORK_SOURCE_USER" ]; then
             ARGS="$ARGS --user $PGFORK_SOURCE_USER"
         fi
-        if [ -n "$PGFORK_SOURCE_PASSWORD" ]; then
-            ARGS="$ARGS --password $PGFORK_SOURCE_PASSWORD"
-        fi
+        # NOTE: test-connection does NOT accept --password flag for security reasons
+        # Password should be provided via environment variables or config file
         if [ -n "$PGFORK_SOURCE_DATABASE" ]; then
             ARGS="$ARGS --database $PGFORK_SOURCE_DATABASE"
         fi
@@ -196,6 +195,11 @@ if [ "${COMMAND#--}" = "$COMMAND" ]; then
 fi
 
 log_info "Executing: postgres-db-fork $COMMAND $ARGS"
+
+# Set password as environment variable for commands that need it
+if [ -n "$PGFORK_SOURCE_PASSWORD" ]; then
+    export PGPASSWORD="$PGFORK_SOURCE_PASSWORD"
+fi
 
 # Execute the command and capture output
 OUTPUT_FILE=$(mktemp)

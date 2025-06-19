@@ -71,7 +71,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["fork"]
 
-# Labels
+# Labels - remove variable expansion to avoid Docker warnings
 LABEL maintainer="postgres-db-fork"
 LABEL description="PostgreSQL Database Fork Tool"
-LABEL version="${VERSION}"
+LABEL version="dev"

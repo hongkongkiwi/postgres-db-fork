@@ -169,12 +169,14 @@ jobs:
           '
 
           # Create source database with test data
+          # pragma: allowlist secret
           PGPASSWORD=testpass123 createdb -h 127.0.0.1 \
-            -p ${{ job.services.postgres.ports['5432'] }} -U testuser source_db # pragma: allowlist secret
+            -p "${{ job.services.postgres.ports['5432'] }}" -U testuser source_db
 
           # Add test schema and data
+          # pragma: allowlist secret
           PGPASSWORD=testpass123 psql -h 127.0.0.1 \
-            -p ${{ job.services.postgres.ports['5432'] }} -U testuser -d source_db <<EOF # pragma: allowlist secret
+            -p "${{ job.services.postgres.ports['5432'] }}" -U testuser -d source_db <<EOF
             CREATE TABLE users (
               id SERIAL PRIMARY KEY,
               name VARCHAR(100) NOT NULL,
@@ -208,25 +210,49 @@ jobs:
 
       - name: Test database fork action
         id: fork-test
-        uses: ./
-        with:
-          command: fork
-          source-host: 127.0.0.1
-          source-port: ${{ job.services.postgres.ports['5432'] }}
-          source-user: testuser
-          source-password: testpass123 # pragma: allowlist secret
-          source-database: source_db
-          source-sslmode: disable
-          dest-host: 127.0.0.1
-          dest-port: ${{ job.services.postgres.ports['5432'] }}
-          dest-user: testuser
-          dest-password: testpass123 # pragma: allowlist secret
-          dest-sslmode: disable
-          target-database: "test_pr_${{ github.run_number }}"
-          drop-if-exists: true
-          max-connections: 4
-          timeout: 5m
-          output-format: json
+        run: |
+          # Run the docker action directly with host networking to allow access to PostgreSQL service
+          # pragma: allowlist secret
+          docker run --rm --network host \
+            -e PGFORK_VAR_PR_NUMBER="${PR_NUMBER}" \
+            -e PGFORK_VAR_BRANCH="${BRANCH_NAME}" \
+            -e PGFORK_VAR_COMMIT_SHA="${{ github.sha }}" \
+            -e PGFORK_VAR_COMMIT_SHORT="${{ github.sha }}" \
+            -e PGFORK_VAR_RUN_ID="${{ github.run_id }}" \
+            -e PGFORK_VAR_RUN_NUMBER="${{ github.run_number }}" \
+            postgres-db-fork-action:test \
+            fork \
+            --source-host 127.0.0.1 \
+            --source-port "${{ job.services.postgres.ports['5432'] }}" \
+            --source-user testuser \
+            --source-password testpass123 \
+            --source-db source_db \
+            --source-sslmode disable \
+            --dest-host 127.0.0.1 \
+            --dest-port "${{ job.services.postgres.ports['5432'] }}" \
+            --dest-user testuser \
+            --dest-password testpass123 \
+            --dest-sslmode disable \
+            --target-db "test_pr_${{ github.run_number }}" \
+            --drop-if-exists \
+            --max-connections 4 \
+            --timeout 5m \
+            --output-format json > fork_result.json
+
+          # Extract outputs from the result
+          RESULT=$(jq -r '.success // "false"' fork_result.json)
+          TARGET_DB=$(jq -r '.database // ""' fork_result.json)
+
+          # Set outputs for the step
+          {
+            echo "result=${RESULT}"
+            echo "target-database=${TARGET_DB}"
+            echo "connection-string=postgresql://testuser:testpass123@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/${TARGET_DB}" # pragma: allowlist secret
+          } >> "$GITHUB_OUTPUT"
+
+          # Show the full result
+          echo "Fork operation result:"
+          cat fork_result.json
         env:
           # Pass GitHub context variables as environment variables
           PGFORK_VAR_PR_NUMBER: ${{ github.event.number || github.run_number }}
@@ -235,6 +261,9 @@ jobs:
           PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
           PGFORK_VAR_RUN_ID: ${{ github.run_id }}
           PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
+          # Safe variables for use in script
+          PR_NUMBER: ${{ github.event.number || github.run_number }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
       - name: Verify fork results
         run: | # pragma: allowlist secret
@@ -256,10 +285,10 @@ jobs:
 
           # Check if database exists and has the expected data
           USER_COUNT=$(PGPASSWORD=testpass123 psql -h 127.0.0.1 \
-            -p ${{ job.services.postgres.ports['5432'] }} \
+            -p "${{ job.services.postgres.ports['5432'] }}" \
             -U testuser -d "$TARGET_DB" -t -c "SELECT COUNT(*) FROM users;") # pragma: allowlist secret
           ORDER_COUNT=$(PGPASSWORD=testpass123 psql -h 127.0.0.1 \
-            -p ${{ job.services.postgres.ports['5432'] }} \
+            -p "${{ job.services.postgres.ports['5432'] }}" \
             -U testuser -d "$TARGET_DB" -t -c "SELECT COUNT(*) FROM orders;") # pragma: allowlist secret
 
           echo "Users in target database: $USER_COUNT"
@@ -281,16 +310,25 @@ jobs:
           PGPASSWORD: testpass123 # pragma: allowlist secret
 
       - name: Test validate command
-        uses: ./
-        with:
-          command: validate
-          dest-host: 127.0.0.1
-          dest-port: ${{ job.services.postgres.ports['5432'] }}
-          dest-user: testuser
-          dest-password: testpass123 # pragma: allowlist secret
-          dest-sslmode: disable
-          target-database: ${{ steps.fork-test.outputs.target-database }}
-          output-format: json
+        run: |
+          # Run the docker action directly with host networking
+          # pragma: allowlist secret
+          docker run --rm --network host \
+            -e PGFORK_VAR_PR_NUMBER="${PR_NUMBER}" \
+            -e PGFORK_VAR_BRANCH="${BRANCH_NAME}" \
+            -e PGFORK_VAR_COMMIT_SHA="${{ github.sha }}" \
+            -e PGFORK_VAR_COMMIT_SHORT="${{ github.sha }}" \
+            -e PGFORK_VAR_RUN_ID="${{ github.run_id }}" \
+            -e PGFORK_VAR_RUN_NUMBER="${{ github.run_number }}" \
+            postgres-db-fork-action:test \
+            validate \
+            --dest-host 127.0.0.1 \
+            --dest-port "${{ job.services.postgres.ports['5432'] }}" \
+            --dest-user testuser \
+            --dest-password testpass123 \
+            --dest-sslmode disable \
+            --target-db "${{ steps.fork-test.outputs.target-database }}" \
+            --output-format json
         env:
           # Pass GitHub context variables as environment variables
           PGFORK_VAR_PR_NUMBER: ${{ github.event.number || github.run_number }}
@@ -299,18 +337,30 @@ jobs:
           PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
           PGFORK_VAR_RUN_ID: ${{ github.run_id }}
           PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
+          # Safe variables for use in script
+          PR_NUMBER: ${{ github.event.number || github.run_number }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
       - name: Test cleanup command
-        uses: ./
-        with:
-          command: cleanup
-          dest-host: 127.0.0.1
-          dest-port: ${{ job.services.postgres.ports['5432'] }}
-          dest-user: testuser
-          dest-password: testpass123 # pragma: allowlist secret
-          dest-sslmode: disable
-          target-database: ${{ steps.fork-test.outputs.target-database }}
-          output-format: json
+        run: |
+          # Run the docker action directly with host networking
+          # pragma: allowlist secret
+          docker run --rm --network host \
+            -e PGFORK_VAR_PR_NUMBER="${PR_NUMBER}" \
+            -e PGFORK_VAR_BRANCH="${BRANCH_NAME}" \
+            -e PGFORK_VAR_COMMIT_SHA="${{ github.sha }}" \
+            -e PGFORK_VAR_COMMIT_SHORT="${{ github.sha }}" \
+            -e PGFORK_VAR_RUN_ID="${{ github.run_id }}" \
+            -e PGFORK_VAR_RUN_NUMBER="${{ github.run_number }}" \
+            postgres-db-fork-action:test \
+            cleanup \
+            --dest-host 127.0.0.1 \
+            --dest-port "${{ job.services.postgres.ports['5432'] }}" \
+            --dest-user testuser \
+            --dest-password testpass123 \
+            --dest-sslmode disable \
+            --target-db "${{ steps.fork-test.outputs.target-database }}" \
+            --output-format json
         env:
           # Pass GitHub context variables as environment variables
           PGFORK_VAR_PR_NUMBER: ${{ github.event.number || github.run_number }}
@@ -319,6 +369,9 @@ jobs:
           PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
           PGFORK_VAR_RUN_ID: ${{ github.run_id }}
           PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
+          # Safe variables for use in script
+          PR_NUMBER: ${{ github.event.number || github.run_number }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
   # Test action with configuration file
   test-action-config-file:
@@ -400,6 +453,9 @@ jobs:
           PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
           PGFORK_VAR_RUN_ID: ${{ github.run_id }}
           PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
+          # Safe variables for use in script
+          PR_NUMBER: ${{ github.event.number || github.run_number }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
   # Test action error handling
   test-action-error-handling:
@@ -493,9 +549,9 @@ jobs:
           target-database: "app_{{.BRANCH}}_{{.RUN_ID}}_pr{{.PR_NUMBER}}"
           template-vars: >-
             {
-              "BRANCH":"${{ github.head_ref || github.ref_name }}",
+              "BRANCH":"${BRANCH_NAME}",
               "RUN_ID":"${{ github.run_id }}",
-              "PR_NUMBER":"${{ github.event.number || 123 }}"
+              "PR_NUMBER":"${PR_NUMBER}"
             }
           dry-run: true
           output-format: json
@@ -507,6 +563,9 @@ jobs:
           PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
           PGFORK_VAR_RUN_ID: ${{ github.run_id }}
           PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
+          # Safe variables for use in script
+          PR_NUMBER: ${{ github.event.number || 123 }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
   # Generate test summary
   test-summary:

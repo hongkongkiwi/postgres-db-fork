@@ -136,8 +136,10 @@ jobs:
         shell: pwsh
         run: |
           cd dist
-          $BINARY_NAME = "postgres-db-fork-${{ needs.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.exe"
-          $ARCHIVE_NAME = "postgres-db-fork-${{ needs.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
+          $BINARY_NAME = "postgres-db-fork-${{ needs.version.outputs.version }}-" +
+            "${{ matrix.goos }}-${{ matrix.goarch }}.exe"
+          $ARCHIVE_NAME = "postgres-db-fork-${{ needs.version.outputs.version }}-" +
+            "${{ matrix.goos }}-${{ matrix.goarch }}.zip"
           Compress-Archive -Path $BINARY_NAME -DestinationPath $ARCHIVE_NAME
 
       - name: Upload artifacts

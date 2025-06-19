@@ -59,137 +59,139 @@ if [ -n "$CONFIG_FILE" ]; then
     ARGS="$ARGS --config $CONFIG_FILE"
 fi
 
-# Add flags based on command support
-# --quiet is supported by: fork, validate, ps, cleanup, list
-if [ "$PGFORK_QUIET" = "true" ] && ([ "$COMMAND" = "fork" ] || [ "$COMMAND" = "validate" ] || [ "$COMMAND" = "ps" ] || [ "$COMMAND" = "cleanup" ] || [ "$COMMAND" = "list" ]); then
-    ARGS="$ARGS --quiet"
-fi
-
-# --dry-run is supported by: fork, cleanup, branch (delete)
-if [ "$PGFORK_DRY_RUN" = "true" ] && ([ "$COMMAND" = "fork" ] || [ "$COMMAND" = "cleanup" ]); then
-    ARGS="$ARGS --dry-run"
-fi
-
-# --drop-if-exists is supported by: fork only
-if [ "$PGFORK_DROP_IF_EXISTS" = "true" ] && [ "$COMMAND" = "fork" ]; then
-    ARGS="$ARGS --drop-if-exists"
-fi
-
-# --schema-only is supported by: fork, diff, branch (create)
-if [ "$PGFORK_SCHEMA_ONLY" = "true" ] && [ "$COMMAND" = "fork" ]; then
-    ARGS="$ARGS --schema-only"
-fi
-
-# --data-only is supported by: fork only
-if [ "$PGFORK_DATA_ONLY" = "true" ] && [ "$COMMAND" = "fork" ]; then
-    ARGS="$ARGS --data-only"
-fi
-
-# Add output format flag (now standardized across all commands)
-if [ -n "$PGFORK_OUTPUT_FORMAT" ]; then
-    ARGS="$ARGS --output-format $PGFORK_OUTPUT_FORMAT"
-fi
-
-# Add fork-specific flags only for commands that support them
-if [ "$COMMAND" = "fork" ]; then
-    if [ -n "$PGFORK_MAX_CONNECTIONS" ]; then
-        ARGS="$ARGS --max-connections $PGFORK_MAX_CONNECTIONS"
+# Skip adding flags if command starts with -- (like --help, --version)
+if [ "${COMMAND#--}" = "$COMMAND" ]; then
+    # Add flags based on command support
+    # --quiet is supported by: fork, validate, ps, cleanup, list
+    if [ "$PGFORK_QUIET" = "true" ] && ([ "$COMMAND" = "fork" ] || [ "$COMMAND" = "validate" ] || [ "$COMMAND" = "ps" ] || [ "$COMMAND" = "cleanup" ] || [ "$COMMAND" = "list" ]); then
+        ARGS="$ARGS --quiet"
     fi
 
-    if [ -n "$PGFORK_CHUNK_SIZE" ]; then
-        ARGS="$ARGS --chunk-size $PGFORK_CHUNK_SIZE"
+    # --dry-run is supported by: fork, cleanup, branch (delete)
+    if [ "$PGFORK_DRY_RUN" = "true" ] && ([ "$COMMAND" = "fork" ] || [ "$COMMAND" = "cleanup" ]); then
+        ARGS="$ARGS --dry-run"
     fi
 
-    if [ -n "$PGFORK_TIMEOUT" ]; then
-        ARGS="$ARGS --timeout $PGFORK_TIMEOUT"
-    fi
-elif [ "$COMMAND" = "test-connection" ]; then
-    # test-connection supports timeout but not max-connections or chunk-size
-    if [ -n "$PGFORK_TIMEOUT" ]; then
-        ARGS="$ARGS --timeout $PGFORK_TIMEOUT"
-    fi
-fi
-
-# Add database connection flags for commands that need them
-if [ "$COMMAND" = "fork" ] || [ "$COMMAND" = "validate" ]; then
-    if [ -n "$PGFORK_SOURCE_HOST" ]; then
-        ARGS="$ARGS --source-host $PGFORK_SOURCE_HOST"
-    fi
-    if [ -n "$PGFORK_SOURCE_PORT" ]; then
-        ARGS="$ARGS --source-port $PGFORK_SOURCE_PORT"
-    fi
-    if [ -n "$PGFORK_SOURCE_USER" ]; then
-        ARGS="$ARGS --source-user $PGFORK_SOURCE_USER"
-    fi
-    if [ -n "$PGFORK_SOURCE_PASSWORD" ]; then
-        ARGS="$ARGS --source-password $PGFORK_SOURCE_PASSWORD"
-    fi
-    if [ -n "$PGFORK_SOURCE_DATABASE" ]; then
-        ARGS="$ARGS --source-db $PGFORK_SOURCE_DATABASE"
-    fi
-    if [ -n "$PGFORK_SOURCE_SSLMODE" ]; then
-        ARGS="$ARGS --source-sslmode $PGFORK_SOURCE_SSLMODE"
+    # --drop-if-exists is supported by: fork only
+    if [ "$PGFORK_DROP_IF_EXISTS" = "true" ] && [ "$COMMAND" = "fork" ]; then
+        ARGS="$ARGS --drop-if-exists"
     fi
 
-    if [ -n "$PGFORK_DEST_HOST" ]; then
-        ARGS="$ARGS --dest-host $PGFORK_DEST_HOST"
-    fi
-    if [ -n "$PGFORK_DEST_PORT" ]; then
-        ARGS="$ARGS --dest-port $PGFORK_DEST_PORT"
-    fi
-    if [ -n "$PGFORK_DEST_USER" ]; then
-        ARGS="$ARGS --dest-user $PGFORK_DEST_USER"
-    fi
-    if [ -n "$PGFORK_DEST_PASSWORD" ]; then
-        ARGS="$ARGS --dest-password $PGFORK_DEST_PASSWORD"
-    fi
-    if [ -n "$PGFORK_DEST_SSLMODE" ]; then
-        ARGS="$ARGS --dest-sslmode $PGFORK_DEST_SSLMODE"
+    # --schema-only is supported by: fork, diff, branch (create)
+    if [ "$PGFORK_SCHEMA_ONLY" = "true" ] && [ "$COMMAND" = "fork" ]; then
+        ARGS="$ARGS --schema-only"
     fi
 
-    if [ -n "$PGFORK_TARGET_DATABASE" ]; then
-        ARGS="$ARGS --target-db $PGFORK_TARGET_DATABASE"
+    # --data-only is supported by: fork only
+    if [ "$PGFORK_DATA_ONLY" = "true" ] && [ "$COMMAND" = "fork" ]; then
+        ARGS="$ARGS --data-only"
     fi
-elif [ "$COMMAND" = "cleanup" ] || [ "$COMMAND" = "list" ] || [ "$COMMAND" = "ps" ]; then
-    # These commands use different flag names
-    if [ -n "$PGFORK_DEST_HOST" ]; then
-        ARGS="$ARGS --host $PGFORK_DEST_HOST"
+
+    # Add output format flag (now standardized across all commands)
+    if [ -n "$PGFORK_OUTPUT_FORMAT" ]; then
+        ARGS="$ARGS --output-format $PGFORK_OUTPUT_FORMAT"
     fi
-    if [ -n "$PGFORK_DEST_PORT" ]; then
-        ARGS="$ARGS --port $PGFORK_DEST_PORT"
+    # Add fork-specific flags only for commands that support them
+    if [ "$COMMAND" = "fork" ]; then
+        if [ -n "$PGFORK_MAX_CONNECTIONS" ]; then
+            ARGS="$ARGS --max-connections $PGFORK_MAX_CONNECTIONS"
+        fi
+
+        if [ -n "$PGFORK_CHUNK_SIZE" ]; then
+            ARGS="$ARGS --chunk-size $PGFORK_CHUNK_SIZE"
+        fi
+
+        if [ -n "$PGFORK_TIMEOUT" ]; then
+            ARGS="$ARGS --timeout $PGFORK_TIMEOUT"
+        fi
+    elif [ "$COMMAND" = "test-connection" ]; then
+        # test-connection supports timeout but not max-connections or chunk-size
+        if [ -n "$PGFORK_TIMEOUT" ]; then
+            ARGS="$ARGS --timeout $PGFORK_TIMEOUT"
+        fi
     fi
-    if [ -n "$PGFORK_DEST_USER" ]; then
-        ARGS="$ARGS --user $PGFORK_DEST_USER"
-    fi
-    if [ -n "$PGFORK_DEST_PASSWORD" ]; then
-        ARGS="$ARGS --password $PGFORK_DEST_PASSWORD"
-    fi
-    if [ -n "$PGFORK_DEST_SSLMODE" ]; then
-        ARGS="$ARGS --sslmode $PGFORK_DEST_SSLMODE"
-    fi
-    # Cleanup command specific flags
-    if [ "$COMMAND" = "cleanup" ] && [ -n "$PGFORK_TARGET_DATABASE" ]; then
-        ARGS="$ARGS --pattern $PGFORK_TARGET_DATABASE"
-    fi
-elif [ "$COMMAND" = "test-connection" ]; then
-    # test-connection uses different flag names
-    if [ -n "$PGFORK_SOURCE_HOST" ]; then
-        ARGS="$ARGS --host $PGFORK_SOURCE_HOST"
-    fi
-    if [ -n "$PGFORK_SOURCE_PORT" ]; then
-        ARGS="$ARGS --port $PGFORK_SOURCE_PORT"
-    fi
-    if [ -n "$PGFORK_SOURCE_USER" ]; then
-        ARGS="$ARGS --user $PGFORK_SOURCE_USER"
-    fi
-    if [ -n "$PGFORK_SOURCE_PASSWORD" ]; then
-        ARGS="$ARGS --password $PGFORK_SOURCE_PASSWORD"
-    fi
-    if [ -n "$PGFORK_SOURCE_DATABASE" ]; then
-        ARGS="$ARGS --database $PGFORK_SOURCE_DATABASE"
-    fi
-    if [ -n "$PGFORK_SOURCE_SSLMODE" ]; then
-        ARGS="$ARGS --sslmode $PGFORK_SOURCE_SSLMODE"
+
+    # Add database connection flags for commands that need them
+    if [ "$COMMAND" = "fork" ] || [ "$COMMAND" = "validate" ]; then
+        if [ -n "$PGFORK_SOURCE_HOST" ]; then
+            ARGS="$ARGS --source-host $PGFORK_SOURCE_HOST"
+        fi
+        if [ -n "$PGFORK_SOURCE_PORT" ]; then
+            ARGS="$ARGS --source-port $PGFORK_SOURCE_PORT"
+        fi
+        if [ -n "$PGFORK_SOURCE_USER" ]; then
+            ARGS="$ARGS --source-user $PGFORK_SOURCE_USER"
+        fi
+        if [ -n "$PGFORK_SOURCE_PASSWORD" ]; then
+            ARGS="$ARGS --source-password $PGFORK_SOURCE_PASSWORD"
+        fi
+        if [ -n "$PGFORK_SOURCE_DATABASE" ]; then
+            ARGS="$ARGS --source-db $PGFORK_SOURCE_DATABASE"
+        fi
+        if [ -n "$PGFORK_SOURCE_SSLMODE" ]; then
+            ARGS="$ARGS --source-sslmode $PGFORK_SOURCE_SSLMODE"
+        fi
+
+        if [ -n "$PGFORK_DEST_HOST" ]; then
+            ARGS="$ARGS --dest-host $PGFORK_DEST_HOST"
+        fi
+        if [ -n "$PGFORK_DEST_PORT" ]; then
+            ARGS="$ARGS --dest-port $PGFORK_DEST_PORT"
+        fi
+        if [ -n "$PGFORK_DEST_USER" ]; then
+            ARGS="$ARGS --dest-user $PGFORK_DEST_USER"
+        fi
+        if [ -n "$PGFORK_DEST_PASSWORD" ]; then
+            ARGS="$ARGS --dest-password $PGFORK_DEST_PASSWORD"
+        fi
+        if [ -n "$PGFORK_DEST_SSLMODE" ]; then
+            ARGS="$ARGS --dest-sslmode $PGFORK_DEST_SSLMODE"
+        fi
+
+        if [ -n "$PGFORK_TARGET_DATABASE" ]; then
+            ARGS="$ARGS --target-db $PGFORK_TARGET_DATABASE"
+        fi
+    elif [ "$COMMAND" = "cleanup" ] || [ "$COMMAND" = "list" ] || [ "$COMMAND" = "ps" ]; then
+        # These commands use different flag names
+        if [ -n "$PGFORK_DEST_HOST" ]; then
+            ARGS="$ARGS --host $PGFORK_DEST_HOST"
+        fi
+        if [ -n "$PGFORK_DEST_PORT" ]; then
+            ARGS="$ARGS --port $PGFORK_DEST_PORT"
+        fi
+        if [ -n "$PGFORK_DEST_USER" ]; then
+            ARGS="$ARGS --user $PGFORK_DEST_USER"
+        fi
+        if [ -n "$PGFORK_DEST_PASSWORD" ]; then
+            ARGS="$ARGS --password $PGFORK_DEST_PASSWORD"
+        fi
+        if [ -n "$PGFORK_DEST_SSLMODE" ]; then
+            ARGS="$ARGS --sslmode $PGFORK_DEST_SSLMODE"
+        fi
+        # Cleanup command specific flags
+        if [ "$COMMAND" = "cleanup" ] && [ -n "$PGFORK_TARGET_DATABASE" ]; then
+            ARGS="$ARGS --pattern $PGFORK_TARGET_DATABASE"
+        fi
+    elif [ "$COMMAND" = "test-connection" ]; then
+        # test-connection uses different flag names
+        if [ -n "$PGFORK_SOURCE_HOST" ]; then
+            ARGS="$ARGS --host $PGFORK_SOURCE_HOST"
+        fi
+        if [ -n "$PGFORK_SOURCE_PORT" ]; then
+            ARGS="$ARGS --port $PGFORK_SOURCE_PORT"
+        fi
+        if [ -n "$PGFORK_SOURCE_USER" ]; then
+            ARGS="$ARGS --user $PGFORK_SOURCE_USER"
+        fi
+        if [ -n "$PGFORK_SOURCE_PASSWORD" ]; then
+            ARGS="$ARGS --password $PGFORK_SOURCE_PASSWORD"
+        fi
+        if [ -n "$PGFORK_SOURCE_DATABASE" ]; then
+            ARGS="$ARGS --database $PGFORK_SOURCE_DATABASE"
+        fi
+        if [ -n "$PGFORK_SOURCE_SSLMODE" ]; then
+            ARGS="$ARGS --sslmode $PGFORK_SOURCE_SSLMODE"
+        fi
     fi
 fi
 

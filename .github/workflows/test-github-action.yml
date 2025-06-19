@@ -91,7 +91,7 @@ jobs:
       - name: Wait for PostgreSQL
         run: |
           timeout 60s bash -c '
-            until pg_isready -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser; do
+            until pg_isready -h 127.0.0.1 -p ${{ job.services.postgres.ports['5432'] }} -U testuser; do
               echo "Waiting for PostgreSQL..."
               sleep 2
             done
@@ -113,7 +113,7 @@ jobs:
         uses: ./
         with:
           command: test-connection
-          source-host: localhost
+          source-host: 127.0.0.1
           source-port: ${{ job.services.postgres.ports['5432'] }}
           source-user: testuser
           source-password: testpass123 # pragma: allowlist secret
@@ -125,7 +125,10 @@ jobs:
     name: Test Action - Database Operations
     runs-on: ubuntu-latest
     needs: build-action
-    if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'fork' || github.event_name != 'workflow_dispatch'
+    if: >-
+      github.event.inputs.test_type == 'all' ||
+      github.event.inputs.test_type == 'fork' ||
+      github.event_name != 'workflow_dispatch'
 
     services:
       postgres:
@@ -159,17 +162,19 @@ jobs:
         run: | # pragma: allowlist secret
           # Wait for PostgreSQL
           timeout 60s bash -c '
-            until pg_isready -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser; do
+            until pg_isready -h 127.0.0.1 -p ${{ job.services.postgres.ports['5432'] }} -U testuser; do
               echo "Waiting for PostgreSQL..."
               sleep 2
             done
           '
 
           # Create source database with test data
-          PGPASSWORD=testpass123 createdb -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser source_db # pragma: allowlist secret
+          PGPASSWORD=testpass123 createdb -h 127.0.0.1 \
+            -p ${{ job.services.postgres.ports['5432'] }} -U testuser source_db # pragma: allowlist secret
 
           # Add test schema and data
-          PGPASSWORD=testpass123 psql -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser -d source_db <<EOF # pragma: allowlist secret
+          PGPASSWORD=testpass123 psql -h 127.0.0.1 \
+            -p ${{ job.services.postgres.ports['5432'] }} -U testuser -d source_db <<EOF # pragma: allowlist secret
             CREATE TABLE users (
               id SERIAL PRIMARY KEY,
               name VARCHAR(100) NOT NULL,
@@ -206,13 +211,13 @@ jobs:
         uses: ./
         with:
           command: fork
-          source-host: localhost
+          source-host: 127.0.0.1
           source-port: ${{ job.services.postgres.ports['5432'] }}
           source-user: testuser
           source-password: testpass123 # pragma: allowlist secret
           source-database: source_db
           source-sslmode: disable
-          dest-host: localhost
+          dest-host: 127.0.0.1
           dest-port: ${{ job.services.postgres.ports['5432'] }}
           dest-user: testuser
           dest-password: testpass123 # pragma: allowlist secret
@@ -250,8 +255,12 @@ jobs:
           fi
 
           # Check if database exists and has the expected data
-          USER_COUNT=$(PGPASSWORD=testpass123 psql -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser -d "$TARGET_DB" -t -c "SELECT COUNT(*) FROM users;") # pragma: allowlist secret
-          ORDER_COUNT=$(PGPASSWORD=testpass123 psql -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser -d "$TARGET_DB" -t -c "SELECT COUNT(*) FROM orders;") # pragma: allowlist secret
+          USER_COUNT=$(PGPASSWORD=testpass123 psql -h 127.0.0.1 \
+            -p ${{ job.services.postgres.ports['5432'] }} \
+            -U testuser -d "$TARGET_DB" -t -c "SELECT COUNT(*) FROM users;") # pragma: allowlist secret
+          ORDER_COUNT=$(PGPASSWORD=testpass123 psql -h 127.0.0.1 \
+            -p ${{ job.services.postgres.ports['5432'] }} \
+            -U testuser -d "$TARGET_DB" -t -c "SELECT COUNT(*) FROM orders;") # pragma: allowlist secret
 
           echo "Users in target database: $USER_COUNT"
           echo "Orders in target database: $ORDER_COUNT"
@@ -275,7 +284,7 @@ jobs:
         uses: ./
         with:
           command: validate
-          dest-host: localhost
+          dest-host: 127.0.0.1
           dest-port: ${{ job.services.postgres.ports['5432'] }}
           dest-user: testuser
           dest-password: testpass123 # pragma: allowlist secret
@@ -295,7 +304,7 @@ jobs:
         uses: ./
         with:
           command: cleanup
-          dest-host: localhost
+          dest-host: 127.0.0.1
           dest-port: ${{ job.services.postgres.ports['5432'] }}
           dest-user: testuser
           dest-password: testpass123 # pragma: allowlist secret
@@ -351,7 +360,7 @@ jobs:
           mkdir -p test-config
           cat > test-config/fork-config.yaml <<EOF
           source:
-            host: localhost
+            host: 127.0.0.1
             port: ${{ job.services.postgres.ports['5432'] }}
             user: testuser
             password: testpass123 # pragma: allowlist secret
@@ -359,7 +368,7 @@ jobs:
             sslmode: disable
 
           destination:
-            host: localhost
+            host: 127.0.0.1
             port: ${{ job.services.postgres.ports['5432'] }}
             user: testuser
             password: testpass123 # pragma: allowlist secret
@@ -472,17 +481,22 @@ jobs:
         uses: ./
         with:
           command: fork
-          source-host: localhost
+          source-host: 127.0.0.1
           source-port: ${{ job.services.postgres.ports['5432'] }}
           source-user: testuser
           source-password: testpass123 # pragma: allowlist secret
           source-database: testdb
-          dest-host: localhost
+          dest-host: 127.0.0.1
           dest-port: ${{ job.services.postgres.ports['5432'] }}
           dest-user: testuser
           dest-password: testpass123 # pragma: allowlist secret
           target-database: "app_{{.BRANCH}}_{{.RUN_ID}}_pr{{.PR_NUMBER}}"
-          template-vars: '{"BRANCH":"${{ github.head_ref || github.ref_name }}","RUN_ID":"${{ github.run_id }}","PR_NUMBER":"${{ github.event.number || 123 }}"}'
+          template-vars: >-
+            {
+              "BRANCH":"${{ github.head_ref || github.ref_name }}",
+              "RUN_ID":"${{ github.run_id }}",
+              "PR_NUMBER":"${{ github.event.number || 123 }}"
+            }
           dry-run: true
           output-format: json
         env:
@@ -498,7 +512,13 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [build-action, test-action-basic, test-action-database-ops, test-action-config-file, test-action-error-handling, test-action-templates]
+    needs:
+      - build-action
+      - test-action-basic
+      - test-action-database-ops
+      - test-action-config-file
+      - test-action-error-handling
+      - test-action-templates
     if: always()
 
     steps:
@@ -509,12 +529,19 @@ jobs:
             echo ""
             echo "| Test Suite | Status |"
             echo "|------------|--------|"
-            echo "| Build Action | ${{ needs.build-action.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
-            echo "| Basic Commands | ${{ needs.test-action-basic.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
-            echo "| Database Operations | ${{ needs.test-action-database-ops.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
-            echo "| Config File | ${{ needs.test-action-config-file.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
-            echo "| Error Handling | ${{ needs.test-action-error-handling.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
-            echo "| Template Variables | ${{ needs.test-action-templates.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            # Define status functions
+            get_status() {
+              case "$1" in
+                "success") echo "✅ Passed" ;;
+                *) echo "❌ Failed" ;;
+              esac
+            }
+            echo "| Build Action | $(get_status '${{ needs.build-action.result }}') |"
+            echo "| Basic Commands | $(get_status '${{ needs.test-action-basic.result }}') |"
+            echo "| Database Operations | $(get_status '${{ needs.test-action-database-ops.result }}') |"
+            echo "| Config File | $(get_status '${{ needs.test-action-config-file.result }}') |"
+            echo "| Error Handling | $(get_status '${{ needs.test-action-error-handling.result }}') |"
+            echo "| Template Variables | $(get_status '${{ needs.test-action-templates.result }}') |"
             echo ""
 
             TOTAL_TESTS=6

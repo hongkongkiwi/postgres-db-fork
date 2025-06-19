@@ -264,6 +264,39 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 
 // loadCleanupFromEnvironment loads cleanup configuration from environment variables
 func loadCleanupFromEnvironment() {
+	// Load general PGFORK_ environment variables first (as fallback)
+	if host := os.Getenv("PGFORK_DEST_HOST"); host != "" {
+		viper.Set("cleanup.host", host)
+	}
+	if port := os.Getenv("PGFORK_DEST_PORT"); port != "" {
+		viper.Set("cleanup.port", port)
+	}
+	if user := os.Getenv("PGFORK_DEST_USER"); user != "" {
+		viper.Set("cleanup.user", user)
+	}
+	if password := os.Getenv("PGFORK_DEST_PASSWORD"); password != "" {
+		viper.Set("cleanup.password", password)
+	}
+	if sslmode := os.Getenv("PGFORK_DEST_SSLMODE"); sslmode != "" {
+		viper.Set("cleanup.sslmode", sslmode)
+	}
+	if pattern := os.Getenv("PGFORK_TARGET_DATABASE"); pattern != "" {
+		viper.Set("cleanup.pattern", pattern)
+	}
+	if force := os.Getenv("PGFORK_CLEANUP_FORCE"); force != "" {
+		viper.Set("cleanup.force", force == "true")
+	}
+	if dryRun := os.Getenv("PGFORK_DRY_RUN"); dryRun != "" {
+		viper.Set("cleanup.dry_run", dryRun == "true")
+	}
+	if quiet := os.Getenv("PGFORK_QUIET"); quiet != "" {
+		viper.Set("cleanup.quiet", quiet == "true")
+	}
+	if outputFormat := os.Getenv("PGFORK_OUTPUT_FORMAT"); outputFormat != "" {
+		viper.Set("cleanup.output_format", outputFormat)
+	}
+
+	// Load specific PGFORK_CLEANUP_ environment variables (these override general ones)
 	if host := os.Getenv("PGFORK_CLEANUP_HOST"); host != "" {
 		viper.Set("cleanup.host", host)
 	}
@@ -286,6 +319,26 @@ func loadCleanupFromEnvironment() {
 		if duration, err := time.ParseDuration(olderThan); err == nil {
 			viper.Set("cleanup.older_than", duration)
 		}
+	}
+	if force := os.Getenv("PGFORK_CLEANUP_FORCE"); force != "" {
+		viper.Set("cleanup.force", force == "true")
+	}
+	if dryRun := os.Getenv("PGFORK_CLEANUP_DRY_RUN"); dryRun != "" {
+		viper.Set("cleanup.dry_run", dryRun == "true")
+	}
+	if exclude := os.Getenv("PGFORK_CLEANUP_EXCLUDE"); exclude != "" {
+		// Parse comma-separated list
+		excludeList := strings.Split(exclude, ",")
+		for i, item := range excludeList {
+			excludeList[i] = strings.TrimSpace(item)
+		}
+		viper.Set("cleanup.exclude", excludeList)
+	}
+	if quiet := os.Getenv("PGFORK_CLEANUP_QUIET"); quiet != "" {
+		viper.Set("cleanup.quiet", quiet == "true")
+	}
+	if outputFormat := os.Getenv("PGFORK_CLEANUP_OUTPUT_FORMAT"); outputFormat != "" {
+		viper.Set("cleanup.output_format", outputFormat)
 	}
 }
 

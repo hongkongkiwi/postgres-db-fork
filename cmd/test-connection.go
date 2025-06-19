@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -99,6 +100,14 @@ func runTestConnection(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get connection parameters: %w", err)
 	}
 
+	// Set PGPASSWORD environment variable if password is available in config
+	// This is needed because PostgreSQL client libraries use PGPASSWORD for authentication
+	if password := viper.GetString("source.password"); password != "" {
+		if err := os.Setenv("PGPASSWORD", password); err != nil {
+			return fmt.Errorf("failed to set PGPASSWORD environment variable: %w", err)
+		}
+	}
+
 	// Run the connection test
 	result := performConnectionTest(connParams, timeout, verbose)
 
@@ -130,6 +139,13 @@ func runTestBothConnections(outputFormat string, verbose bool, timeout time.Dura
 		fmt.Println(strings.Repeat("=", 40))
 	}
 
+	// Set PGPASSWORD for source connection
+	if password := viper.GetString("source.password"); password != "" {
+		if err := os.Setenv("PGPASSWORD", password); err != nil {
+			return fmt.Errorf("failed to set PGPASSWORD environment variable: %w", err)
+		}
+	}
+
 	sourceResult := performConnectionTest(sourceParams, timeout, verbose)
 	if err := outputConnectionTestResult(sourceResult, outputFormat); err != nil {
 		return err
@@ -138,6 +154,13 @@ func runTestBothConnections(outputFormat string, verbose bool, timeout time.Dura
 	if outputFormat == "text" {
 		fmt.Println("\nTesting Target Database Connection:")
 		fmt.Println(strings.Repeat("=", 40))
+	}
+
+	// Set PGPASSWORD for target connection
+	if password := viper.GetString("target.password"); password != "" {
+		if err := os.Setenv("PGPASSWORD", password); err != nil {
+			return fmt.Errorf("failed to set PGPASSWORD environment variable: %w", err)
+		}
 	}
 
 	targetResult := performConnectionTest(targetParams, timeout, verbose)
@@ -356,11 +379,15 @@ func testSSLConnection(host, port string, timeout time.Duration, verbose bool) T
 func testDatabaseAuth(params map[string]string, timeout time.Duration, verbose bool) TestResult {
 	start := time.Now()
 
+	// Build connection string - include password if available in environment or if passed
 	connStr := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=%s connect_timeout=%d",
 		params["host"], params["port"], params["user"], params["database"], params["sslmode"], int(timeout.Seconds()))
 
-	// Note: We're not including password in connection string for security
-	// In a real implementation, you'd get the password securely
+	// Check if password is available in PGPASSWORD environment variable and include it in connection string
+	if password := os.Getenv("PGPASSWORD"); password != "" {
+		connStr = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
+			params["host"], params["port"], params["user"], password, params["database"], params["sslmode"], int(timeout.Seconds()))
+	}
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -404,6 +431,12 @@ func testBasicPermissions(params map[string]string, timeout time.Duration, verbo
 
 	connStr := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=%s connect_timeout=%d",
 		params["host"], params["port"], params["user"], params["database"], params["sslmode"], int(timeout.Seconds()))
+
+	// Check if password is available in PGPASSWORD environment variable and include it in connection string
+	if password := os.Getenv("PGPASSWORD"); password != "" {
+		connStr = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
+			params["host"], params["port"], params["user"], password, params["database"], params["sslmode"], int(timeout.Seconds()))
+	}
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -462,6 +495,12 @@ func testConnectionPool(params map[string]string, timeout time.Duration, verbose
 
 	connStr := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=%s connect_timeout=%d",
 		params["host"], params["port"], params["user"], params["database"], params["sslmode"], int(timeout.Seconds()))
+
+	// Check if password is available in PGPASSWORD environment variable and include it in connection string
+	if password := os.Getenv("PGPASSWORD"); password != "" {
+		connStr = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
+			params["host"], params["port"], params["user"], password, params["database"], params["sslmode"], int(timeout.Seconds()))
+	}
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {

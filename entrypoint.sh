@@ -2,6 +2,10 @@
 
 set -e
 
+# Clear any existing PostgreSQL environment variables that might conflict
+unset PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PGSSLMODE
+unset POSTGRES_HOST POSTGRES_PORT POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB
+
 # Debug: Print environment variables for troubleshooting
 echo "=== DEBUG: Environment Variables ==="
 echo "COMMAND: $1"

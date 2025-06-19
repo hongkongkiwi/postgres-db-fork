@@ -29,7 +29,8 @@ jobs:
       - name: "Close PR if CI failed"
         if: steps.ci-wait.outputs.conclusion != 'success'
         run: |
-          gh pr comment "$PR_URL" --body "CI checks failed. Closing this PR. Please investigate the root cause and manually create a new PR if necessary."
+          gh pr comment "$PR_URL" --body \
+            "CI checks failed. Closing this PR. Please investigate and manually create a new PR if necessary."
           gh pr close "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -43,7 +44,10 @@ jobs:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: "Auto-approve minor and patch updates"
-        if: steps.ci-wait.outputs.conclusion == 'success' && (steps.pr-info.outputs.update-type == 'version-update:semver-minor' || steps.pr-info.outputs.update-type == 'version-update:semver-patch')
+        if: >-
+          steps.ci-wait.outputs.conclusion == 'success' &&
+          (steps.pr-info.outputs.update-type == 'version-update:semver-minor' ||
+           steps.pr-info.outputs.update-type == 'version-update:semver-patch')
         run: |
           gh pr review --approve "$PR_URL"
         env:
@@ -51,7 +55,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "Auto-merge minor and patch updates"
-        if: steps.ci-wait.outputs.conclusion == 'success' && (steps.pr-info.outputs.update-type == 'version-update:semver-minor' || steps.pr-info.outputs.update-type == 'version-update:semver-patch')
+        if: >-
+          steps.ci-wait.outputs.conclusion == 'success' &&
+          (steps.pr-info.outputs.update-type == 'version-update:semver-minor' ||
+           steps.pr-info.outputs.update-type == 'version-update:semver-patch')
         run: |
           gh pr merge --auto --squash "$PR_URL"
         env:
@@ -59,9 +66,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "Comment on major updates"
-        if: steps.ci-wait.outputs.conclusion == 'success' && steps.pr-info.outputs.update-type == 'version-update:semver-major'
+        if: >-
+          steps.ci-wait.outputs.conclusion == 'success' &&
+          steps.pr-info.outputs.update-type == 'version-update:semver-major'
         run: |
-          gh pr comment "$PR_URL" --body "🚨 This is a major version update. Please review manually before merging."
+          gh pr comment "$PR_URL" --body \
+            "🚨 This is a major version update. Please review manually before merging."
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

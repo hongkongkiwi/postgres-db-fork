@@ -117,7 +117,10 @@ jobs:
             BINARY_NAME="${BINARY_NAME}.exe"
           fi
 
-          go build -ldflags="-s -w -X main.version=${{ needs.version.outputs.version }}" -o "dist/${BINARY_NAME}" main.go
+          go build \
+            -ldflags="-s -w -X main.version=${{ needs.version.outputs.version }}" \
+            -o "dist/${BINARY_NAME}" \
+            main.go
 
           # Create archive
           cd dist
@@ -297,6 +300,7 @@ jobs:
             echo "- Release: ${{ needs.release.result }}"
             echo ""
             echo "### 🔗 Links"
-            echo "- [Release Page](https://github.com/${{ github.repository }}/releases/tag/${{ needs.version.outputs.version }})"
+            RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ needs.version.outputs.version }}"
+            echo "- [Release Page](${RELEASE_URL})"
             echo "- [Docker Images](https://github.com/${{ github.repository }}/pkgs/container/postgres-db-fork)"
           } >> "$GITHUB_STEP_SUMMARY"

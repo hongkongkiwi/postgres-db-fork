@@ -107,13 +107,13 @@ func init() {
 	branchCreateCmd.Flags().Int("pr", 0, "Create PR branch (auto-generates name)")
 	branchCreateCmd.Flags().String("point-in-time", "", "Point-in-time recovery timestamp")
 	branchCreateCmd.Flags().Bool("schema-only", false, "Create schema-only branch")
-	branchCreateCmd.Flags().String("output", "text", "Output format: text or json")
+	branchCreateCmd.Flags().String("output-format", "text", "Output format: text or json")
 	if err := branchCreateCmd.MarkFlagRequired("from"); err != nil {
 		log.Fatalf("Failed to mark flag as required: %v", err)
 	}
 
 	// List command flags
-	branchListCmd.Flags().String("output", "text", "Output format: text or json")
+	branchListCmd.Flags().String("output-format", "text", "Output format: text or json")
 	branchListCmd.Flags().String("pattern", "", "Filter branches by pattern")
 	branchListCmd.Flags().Bool("show-size", false, "Show database sizes")
 	branchListCmd.Flags().String("host", "localhost", "Database host")
@@ -135,7 +135,7 @@ func init() {
 func runBranchCreate(cmd *cobra.Command, args []string) error {
 	from, _ := cmd.Flags().GetString("from")
 	prNumber, _ := cmd.Flags().GetInt("pr")
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 	schemaOnly, _ := cmd.Flags().GetBool("schema-only")
 
 	var branchName string
@@ -226,7 +226,7 @@ func runBranchCreate(cmd *cobra.Command, args []string) error {
 }
 
 func runBranchList(cmd *cobra.Command, args []string) error {
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 	pattern, _ := cmd.Flags().GetString("pattern")
 	showSize, _ := cmd.Flags().GetBool("show-size")
 

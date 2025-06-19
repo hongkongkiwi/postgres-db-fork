@@ -33,13 +33,13 @@ func init() {
 	rootCmd.AddCommand(diffCmd)
 
 	diffCmd.Flags().Bool("schema-only", false, "Compare schema only")
-	diffCmd.Flags().String("output", "text", "Output format: text or json")
+	diffCmd.Flags().String("output-format", "text", "Output format: text or json")
 }
 
 func runDiff(cmd *cobra.Command, args []string) error {
 	sourceDB := args[0]
 	targetDB := args[1]
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 
 	// Mock results for now
 	if outputFormat == "json" {

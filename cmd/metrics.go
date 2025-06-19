@@ -113,7 +113,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(metricsCmd)
 
-	metricsCmd.Flags().String("output", "text", "Output format: text or json")
+	metricsCmd.Flags().String("output-format", "text", "Output format: text or json")
 	metricsCmd.Flags().String("period", "7d", "Time period for metrics (1d, 7d, 30d, 90d)")
 	metricsCmd.Flags().Bool("detailed", false, "Show detailed job breakdowns")
 	metricsCmd.Flags().Bool("summary-only", false, "Show only summary statistics")
@@ -122,7 +122,7 @@ func init() {
 }
 
 func runMetrics(cmd *cobra.Command, args []string) error {
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 	period, _ := cmd.Flags().GetString("period")
 	detailed, _ := cmd.Flags().GetBool("detailed")
 	summaryOnly, _ := cmd.Flags().GetBool("summary-only")

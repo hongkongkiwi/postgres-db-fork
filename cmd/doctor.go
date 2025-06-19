@@ -62,13 +62,13 @@ func init() {
 	rootCmd.AddCommand(doctorCmd)
 
 	// Flags
-	doctorCmd.Flags().String("output", "text", "Output format: text or json")
+	doctorCmd.Flags().String("output-format", "text", "Output format: text or json")
 	doctorCmd.Flags().Bool("quick", false, "Run only quick checks (skip database connectivity)")
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
 	start := time.Now()
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 	quick, _ := cmd.Flags().GetBool("quick")
 
 	var results []DoctorResult

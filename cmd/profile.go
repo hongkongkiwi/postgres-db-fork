@@ -133,11 +133,11 @@ func init() {
 	profileCreateCmd.Flags().Bool("from-current", false, "Create profile from current configuration")
 
 	// Profile list flags
-	profileListCmd.Flags().String("output", "table", "Output format: table, json, yaml")
+	profileListCmd.Flags().String("output-format", "table", "Output format: table, json, yaml")
 	profileListCmd.Flags().String("tag", "", "Filter by tag")
 
 	// Profile show flags
-	profileShowCmd.Flags().String("output", "yaml", "Output format: yaml, json")
+	profileShowCmd.Flags().String("output-format", "yaml", "Output format: yaml, json")
 
 	// Profile export flags
 	profileExportCmd.Flags().String("output", "profiles.yaml", "Output file")
@@ -233,7 +233,7 @@ func runProfileList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 	tagFilter, _ := cmd.Flags().GetString("tag")
 
 	// Filter by tag if specified
@@ -334,7 +334,7 @@ func runProfileShow(cmd *cobra.Command, args []string) error {
 	}
 
 	name := args[0]
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 
 	profile, exists := store.Profiles[name]
 	if !exists {

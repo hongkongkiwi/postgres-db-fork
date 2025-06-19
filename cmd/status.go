@@ -91,14 +91,14 @@ Examples:
 func init() {
 	rootCmd.AddCommand(statusCmd)
 
-	statusCmd.Flags().String("output", "text", "Output format: text or json")
+	statusCmd.Flags().String("output-format", "text", "Output format: text or json")
 	statusCmd.Flags().Duration("watch", 0, "Refresh interval (e.g., 5s, 1m)")
 	statusCmd.Flags().Bool("health-only", false, "Only perform health checks")
 	statusCmd.Flags().String("state-dir", "", "Job state directory to check")
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 	watchInterval, _ := cmd.Flags().GetDuration("watch")
 	healthOnly, _ := cmd.Flags().GetBool("health-only")
 	stateDir, _ := cmd.Flags().GetString("state-dir")

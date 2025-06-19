@@ -52,11 +52,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(versionCmd)
 
-	versionCmd.Flags().String("output", "text", "Output format: text or json")
+	versionCmd.Flags().String("output-format", "text", "Output format: text or json")
 }
 
 func runVersion(cmd *cobra.Command, args []string) error {
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 
 	versionInfo := &VersionInfo{
 		Version:      Version,

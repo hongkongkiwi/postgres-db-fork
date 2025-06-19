@@ -1,6 +1,6 @@
 name: 'PostgreSQL Database Fork'
-description: 'Fork PostgreSQL databases for CI/CD environments'
-author: 'Your Name'
+description: 'Fork PostgreSQL databases in CI/CD environments'
+author: 'Andy Savage <andy@savage.hk>'
 
 branding:
   icon: 'database'
@@ -103,6 +103,16 @@ inputs:
     required: false
     default: 'false'
 
+  schema-only:
+    description: 'Transfer schema only (no data)'
+    required: false
+    default: 'false'
+
+  data-only:
+    description: 'Transfer data only (no schema)'
+    required: false
+    default: 'false'
+
   template-vars:
     description: 'Template variables in JSON format (e.g., {"PR_NUMBER":"123","BRANCH":"main"})'
     required: false
@@ -147,6 +157,8 @@ runs:
     PGFORK_OUTPUT_FORMAT: ${{ inputs.output-format }}
     PGFORK_QUIET: ${{ inputs.quiet }}
     PGFORK_DRY_RUN: ${{ inputs.dry-run }}
+    PGFORK_SCHEMA_ONLY: ${{ inputs.schema-only }}
+    PGFORK_DATA_ONLY: ${{ inputs.data-only }}
 
     # Additional configuration
     CONFIG_FILE: ${{ inputs.config-file }}

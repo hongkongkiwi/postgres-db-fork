@@ -139,13 +139,13 @@ func init() {
 	jobsCmd.AddCommand(jobsShowCmd)
 
 	// List command flags
-	jobsListCmd.Flags().String("output", "text", "Output format: text or json")
+	jobsListCmd.Flags().String("output-format", "text", "Output format: text or json")
 	jobsListCmd.Flags().String("status", "", "Filter by status: running, paused, completed, failed")
 	jobsListCmd.Flags().Int("limit", 0, "Limit number of jobs shown (0 = no limit)")
 	jobsListCmd.Flags().String("state-dir", "", "Job state directory")
 
 	// Show command flags
-	jobsShowCmd.Flags().String("output", "text", "Output format: text or json")
+	jobsShowCmd.Flags().String("output-format", "text", "Output format: text or json")
 	jobsShowCmd.Flags().String("state-dir", "", "Job state directory")
 
 	// Global state-dir flag for other commands
@@ -155,7 +155,7 @@ func init() {
 }
 
 func runJobsList(cmd *cobra.Command, args []string) error {
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 	statusFilter, _ := cmd.Flags().GetString("status")
 	limit, _ := cmd.Flags().GetInt("limit")
 	stateDir, _ := cmd.Flags().GetString("state-dir")
@@ -226,7 +226,7 @@ func runJobsResume(cmd *cobra.Command, args []string) error {
 
 func runJobsShow(cmd *cobra.Command, args []string) error {
 	jobID := args[0]
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 	stateDir, _ := cmd.Flags().GetString("state-dir")
 
 	job, err := getJobByID(stateDir, jobID)

@@ -288,6 +288,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Update major version tag for GitHub Actions
+        if: needs.version.outputs.is_prerelease == 'false'
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+
+          # Extract major version (e.g., v1.2.3 -> v1)
+          MAJOR_VERSION=$(echo "$VERSION" | sed -E 's/^v([0-9]+)\..*/v\1/')
+
+          echo "Creating/updating major version tag: $MAJOR_VERSION"
+
+          # Delete existing major version tag if it exists
+          git tag -d "$MAJOR_VERSION" 2>/dev/null || true
+          git push origin ":refs/tags/$MAJOR_VERSION" 2>/dev/null || true
+
+          # Create new major version tag pointing to this release
+          git tag -f "$MAJOR_VERSION" "$VERSION"
+          git push origin "$MAJOR_VERSION"
+
+          echo "✅ Major version tag $MAJOR_VERSION updated to point to $VERSION"
+
   # Notify on completion
   notify:
     name: Notify Release Completion
@@ -313,4 +333,13 @@ jobs:
             RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ needs.version.outputs.version }}"
             echo "- [Release Page](${RELEASE_URL})"
             echo "- [Docker Images](https://github.com/${{ github.repository }}/pkgs/container/postgres-db-fork)"
+            echo ""
+            if [ "${{ needs.version.outputs.is_prerelease }}" = "false" ]; then
+              VERSION="${{ needs.version.outputs.version }}"
+              MAJOR_VERSION=$(echo "$VERSION" | sed -E 's/^v([0-9]+)\..*/v\1/')
+              echo "### 🎯 GitHub Actions Usage"
+              echo "Users can now reference this action using:"
+              echo "- \`uses: ${{ github.repository }}@$VERSION\` (exact version)"
+              echo "- \`uses: ${{ github.repository }}@$MAJOR_VERSION\` (major version)"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

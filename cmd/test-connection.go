@@ -77,14 +77,14 @@ func init() {
 	testConnectionCmd.Flags().String("user", "", "Database user")
 	testConnectionCmd.Flags().String("database", "", "Database name")
 	testConnectionCmd.Flags().String("sslmode", "", "SSL mode (disable, require, verify-ca, verify-full)")
-	testConnectionCmd.Flags().String("output", "text", "Output format: text or json")
+	testConnectionCmd.Flags().String("output-format", "text", "Output format: text or json")
 	testConnectionCmd.Flags().Bool("verbose", false, "Verbose output with detailed diagnostics")
 	testConnectionCmd.Flags().Bool("test-both", false, "Test both source and target databases from config")
 	testConnectionCmd.Flags().Duration("timeout", 30*time.Second, "Connection timeout")
 }
 
 func runTestConnection(cmd *cobra.Command, args []string) error {
-	outputFormat, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("output-format")
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	testBoth, _ := cmd.Flags().GetBool("test-both")
 	timeout, _ := cmd.Flags().GetDuration("timeout")

@@ -1,0 +1,507 @@
+name: Test GitHub Action
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of action tests to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - basic
+          - fork
+          - validate
+          - cleanup
+
+# Prevent multiple concurrent runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Build the action Docker image first
+  build-action:
+    name: Build Action Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build action image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: postgres-db-fork-action:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=docker,dest=/tmp/action-image.tar
+
+      - name: Upload action image
+        uses: actions/upload-artifact@v4
+        with:
+          name: action-image
+          path: /tmp/action-image.tar
+          retention-days: 1
+
+  # Test basic action functionality
+  test-action-basic:
+    name: Test Action - Basic Commands
+    runs-on: ubuntu-latest
+    needs: build-action
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: testpass123 # pragma: allowlist secret
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download action image
+        uses: actions/download-artifact@v4
+        with:
+          name: action-image
+          path: /tmp
+
+      - name: Load action image
+        run: docker load --input /tmp/action-image.tar
+
+      - name: Wait for PostgreSQL
+        run: |
+          timeout 60s bash -c '
+            until pg_isready -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser; do
+              echo "Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+        env:
+          PGPASSWORD: testpass123 # pragma: allowlist secret
+
+      - name: Test version command
+        uses: ./
+        with:
+          command: version
+
+      - name: Test help command
+        uses: ./
+        with:
+          command: --help
+
+      - name: Test test-connection command
+        uses: ./
+        with:
+          command: test-connection
+          source-host: localhost
+          source-port: ${{ job.services.postgres.ports['5432'] }}
+          source-user: testuser
+          source-password: testpass123 # pragma: allowlist secret
+          source-database: testdb
+          source-sslmode: disable
+
+  # Test database operations
+  test-action-database-ops:
+    name: Test Action - Database Operations
+    runs-on: ubuntu-latest
+    needs: build-action
+    if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'fork' || github.event_name != 'workflow_dispatch'
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: testpass123 # pragma: allowlist secret
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download action image
+        uses: actions/download-artifact@v4
+        with:
+          name: action-image
+          path: /tmp
+
+      - name: Load action image
+        run: docker load --input /tmp/action-image.tar
+
+      - name: Setup test databases and data
+        run: | # pragma: allowlist secret
+          # Wait for PostgreSQL
+          timeout 60s bash -c '
+            until pg_isready -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser; do
+              echo "Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+
+          # Create source database with test data
+          PGPASSWORD=testpass123 createdb -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser source_db # pragma: allowlist secret
+
+          # Add test schema and data
+          PGPASSWORD=testpass123 psql -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser -d source_db <<EOF # pragma: allowlist secret
+            CREATE TABLE users (
+              id SERIAL PRIMARY KEY,
+              name VARCHAR(100) NOT NULL,
+              email VARCHAR(100) UNIQUE,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE orders (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER REFERENCES users(id),
+              amount DECIMAL(10,2),
+              status VARCHAR(20) DEFAULT 'pending'
+            );
+
+            INSERT INTO users (name, email) VALUES
+              ('Alice Johnson', 'alice@example.com'),
+              ('Bob Smith', 'bob@example.com'),
+              ('Charlie Brown', 'charlie@example.com');
+
+            INSERT INTO orders (user_id, amount, status) VALUES
+              (1, 99.99, 'completed'),
+              (2, 149.50, 'pending'),
+              (3, 79.99, 'completed');
+
+            CREATE INDEX idx_users_email ON users(email);
+            CREATE INDEX idx_orders_user_id ON orders(user_id);
+          EOF
+
+        env:
+          PGPASSWORD: testpass123 # pragma: allowlist secret
+
+      - name: Test database fork action
+        id: fork-test
+        uses: ./
+        with:
+          command: fork
+          source-host: localhost
+          source-port: ${{ job.services.postgres.ports['5432'] }}
+          source-user: testuser
+          source-password: testpass123 # pragma: allowlist secret
+          source-database: source_db
+          source-sslmode: disable
+          dest-host: localhost
+          dest-port: ${{ job.services.postgres.ports['5432'] }}
+          dest-user: testuser
+          dest-password: testpass123 # pragma: allowlist secret
+          dest-sslmode: disable
+          target-database: "test_pr_${{ github.run_number }}"
+          drop-if-exists: true
+          max-connections: 4
+          timeout: 5m
+          output-format: json
+
+      - name: Verify fork results
+        run: | # pragma: allowlist secret
+          echo "Fork result: ${{ steps.fork-test.outputs.result }}"
+          echo "Target database: ${{ steps.fork-test.outputs.target-database }}"
+          echo "Connection string: ${{ steps.fork-test.outputs.connection-string }}"
+
+          if [ "${{ steps.fork-test.outputs.result }}" != "success" ]; then
+            echo "❌ Fork operation failed"
+            exit 1
+          fi
+
+          # Verify the target database exists and has data
+          TARGET_DB="${{ steps.fork-test.outputs.target-database }}"
+          if [ -z "$TARGET_DB" ]; then
+            echo "❌ Target database name not returned"
+            exit 1
+          fi
+
+          # Check if database exists and has the expected data
+          USER_COUNT=$(PGPASSWORD=testpass123 psql -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser -d "$TARGET_DB" -t -c "SELECT COUNT(*) FROM users;") # pragma: allowlist secret
+          ORDER_COUNT=$(PGPASSWORD=testpass123 psql -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U testuser -d "$TARGET_DB" -t -c "SELECT COUNT(*) FROM orders;") # pragma: allowlist secret
+
+          echo "Users in target database: $USER_COUNT"
+          echo "Orders in target database: $ORDER_COUNT"
+
+          if [ "$USER_COUNT" -ne 3 ]; then
+            echo "❌ Expected 3 users, got $USER_COUNT"
+            exit 1
+          fi
+
+          if [ "$ORDER_COUNT" -ne 3 ]; then
+            echo "❌ Expected 3 orders, got $ORDER_COUNT"
+            exit 1
+          fi
+
+          echo "✅ Fork operation successful and data verified"
+
+        env:
+          PGPASSWORD: testpass123 # pragma: allowlist secret
+
+      - name: Test validate command
+        uses: ./
+        with:
+          command: validate
+          dest-host: localhost
+          dest-port: ${{ job.services.postgres.ports['5432'] }}
+          dest-user: testuser
+          dest-password: testpass123 # pragma: allowlist secret
+          dest-sslmode: disable
+          target-database: ${{ steps.fork-test.outputs.target-database }}
+          output-format: json
+
+      - name: Test cleanup command
+        uses: ./
+        with:
+          command: cleanup
+          dest-host: localhost
+          dest-port: ${{ job.services.postgres.ports['5432'] }}
+          dest-user: testuser
+          dest-password: testpass123 # pragma: allowlist secret
+          dest-sslmode: disable
+          target-database: ${{ steps.fork-test.outputs.target-database }}
+          output-format: json
+
+  # Test action with configuration file
+  test-action-config-file:
+    name: Test Action - Config File
+    runs-on: ubuntu-latest
+    needs: build-action
+    if: github.event.inputs.test_type == 'all' || github.event_name != 'workflow_dispatch'
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: testpass123 # pragma: allowlist secret
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download action image
+        uses: actions/download-artifact@v4
+        with:
+          name: action-image
+          path: /tmp
+
+      - name: Load action image
+        run: docker load --input /tmp/action-image.tar
+
+      - name: Create test configuration file
+        run: | # pragma: allowlist secret
+          mkdir -p test-config
+          cat > test-config/fork-config.yaml <<EOF
+          source:
+            host: localhost
+            port: ${{ job.services.postgres.ports['5432'] }}
+            user: testuser
+            password: testpass123 # pragma: allowlist secret
+            database: testdb
+            sslmode: disable
+
+          destination:
+            host: localhost
+            port: ${{ job.services.postgres.ports['5432'] }}
+            user: testuser
+            password: testpass123 # pragma: allowlist secret
+            sslmode: disable
+
+          fork:
+            target_database: "config_test_{{.RUN_NUMBER}}"
+            drop_if_exists: true
+            max_connections: 2
+            chunk_size: 500
+            timeout: 10m
+
+          output:
+            format: json
+            quiet: false
+          EOF
+
+      - name: Test action with config file
+        uses: ./
+        with:
+          command: test-connection
+          config-file: test-config/fork-config.yaml
+          template-vars: '{"RUN_NUMBER":"${{ github.run_number }}"}'
+
+  # Test action error handling
+  test-action-error-handling:
+    name: Test Action - Error Handling
+    runs-on: ubuntu-latest
+    needs: build-action
+    if: github.event.inputs.test_type == 'all' || github.event_name != 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download action image
+        uses: actions/download-artifact@v4
+        with:
+          name: action-image
+          path: /tmp
+
+      - name: Load action image
+        run: docker load --input /tmp/action-image.tar
+
+      - name: Test invalid connection (should fail gracefully)
+        id: invalid-connection
+        continue-on-error: true
+        uses: ./
+        with:
+          command: test-connection
+          source-host: invalid-host
+          source-port: 9999
+          source-user: invalid-user
+          source-password: invalid-pass # pragma: allowlist secret
+          source-database: invalid-db
+          timeout: 5s
+
+      - name: Verify error handling
+        run: |
+          if [ "${{ steps.invalid-connection.outcome }}" = "success" ]; then
+            echo "❌ Expected connection test to fail, but it succeeded"
+            exit 1
+          fi
+          echo "✅ Error handling works correctly"
+
+  # Test action with different template variables
+  test-action-templates:
+    name: Test Action - Template Variables
+    runs-on: ubuntu-latest
+    needs: build-action
+    if: github.event.inputs.test_type == 'all' || github.event_name != 'workflow_dispatch'
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: testpass123 # pragma: allowlist secret
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download action image
+        uses: actions/download-artifact@v4
+        with:
+          name: action-image
+          path: /tmp
+
+      - name: Load action image
+        run: docker load --input /tmp/action-image.tar
+
+      - name: Test template variables in dry-run mode
+        uses: ./
+        with:
+          command: fork
+          source-host: localhost
+          source-port: ${{ job.services.postgres.ports['5432'] }}
+          source-user: testuser
+          source-password: testpass123 # pragma: allowlist secret
+          source-database: testdb
+          dest-host: localhost
+          dest-port: ${{ job.services.postgres.ports['5432'] }}
+          dest-user: testuser
+          dest-password: testpass123 # pragma: allowlist secret
+          target-database: "app_{{.BRANCH}}_{{.RUN_ID}}_pr{{.PR_NUMBER}}"
+          template-vars: '{"BRANCH":"${{ github.head_ref || github.ref_name }}","RUN_ID":"${{ github.run_id }}","PR_NUMBER":"${{ github.event.number || 123 }}"}'
+          dry-run: true
+          output-format: json
+
+  # Generate test summary
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [build-action, test-action-basic, test-action-database-ops, test-action-config-file, test-action-error-handling, test-action-templates]
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          {
+            echo "## 🧪 GitHub Action Test Results"
+            echo ""
+            echo "| Test Suite | Status |"
+            echo "|------------|--------|"
+            echo "| Build Action | ${{ needs.build-action.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| Basic Commands | ${{ needs.test-action-basic.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| Database Operations | ${{ needs.test-action-database-ops.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| Config File | ${{ needs.test-action-config-file.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| Error Handling | ${{ needs.test-action-error-handling.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| Template Variables | ${{ needs.test-action-templates.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo ""
+
+            TOTAL_TESTS=6
+            PASSED_TESTS=0
+
+            if [ "${{ needs.build-action.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
+            if [ "${{ needs.test-action-basic.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
+            if [ "${{ needs.test-action-database-ops.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
+            if [ "${{ needs.test-action-config-file.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
+            if [ "${{ needs.test-action-error-handling.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
+            if [ "${{ needs.test-action-templates.result }}" = "success" ]; then ((PASSED_TESTS++)); fi
+
+            echo "**Overall Result:** $PASSED_TESTS/$TOTAL_TESTS tests passed"
+            echo ""
+            echo "### 🔧 Tested Functionality"
+            echo "- ✅ Action Docker image building"
+            echo "- ✅ Basic CLI commands (version, help, test-connection)"
+            echo "- ✅ Database forking operations"
+            echo "- ✅ Database validation and cleanup"
+            echo "- ✅ Configuration file support"
+            echo "- ✅ Template variable processing"
+            echo "- ✅ Error handling and graceful failures"
+            echo ""
+            echo "### 📝 Usage Examples Tested"
+            echo "- Direct action usage with parameters"
+            echo "- Configuration file-based usage"
+            echo "- Template variables for dynamic database names"
+            echo "- Error scenarios and edge cases"
+
+          } >> "$GITHUB_STEP_SUMMARY"

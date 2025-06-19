@@ -1,0 +1,333 @@
+name: PR Database Demo
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_target:
+    types: [closed]
+
+# This workflow demonstrates how to use postgres-db-fork as a GitHub Action
+# in a real-world pull request workflow for creating preview databases
+
+jobs:
+  create-preview-database:
+    name: Create PR Preview Database
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+
+    # This job would normally connect to real databases
+    # For demo purposes, we'll use a test PostgreSQL instance
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: demo_password # pragma: allowlist secret
+          POSTGRES_USER: demo_user
+          POSTGRES_DB: demo_staging_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup demo staging database with test data
+        run: | # pragma: allowlist secret
+          # Wait for PostgreSQL to be ready
+          timeout 60s bash -c '
+            until pg_isready -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U demo_user; do
+              echo "Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+
+          # Create a staging database with realistic test data
+          PGPASSWORD=demo_password psql -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U demo_user -d demo_staging_db <<EOF # pragma: allowlist secret
+            -- Create typical application schema
+            CREATE TABLE users (
+              id SERIAL PRIMARY KEY,
+              email VARCHAR(255) UNIQUE NOT NULL,
+              name VARCHAR(100) NOT NULL,
+              role VARCHAR(50) DEFAULT 'user',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE products (
+              id SERIAL PRIMARY KEY,
+              name VARCHAR(200) NOT NULL,
+              description TEXT,
+              price DECIMAL(10,2) NOT NULL,
+              category VARCHAR(100),
+              stock_quantity INTEGER DEFAULT 0,
+              is_active BOOLEAN DEFAULT true,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE orders (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER REFERENCES users(id),
+              total_amount DECIMAL(10,2) NOT NULL,
+              status VARCHAR(20) DEFAULT 'pending',
+              order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE order_items (
+              id SERIAL PRIMARY KEY,
+              order_id INTEGER REFERENCES orders(id),
+              product_id INTEGER REFERENCES products(id),
+              quantity INTEGER NOT NULL,
+              unit_price DECIMAL(10,2) NOT NULL
+            );
+
+            -- Insert realistic test data
+            INSERT INTO users (email, name, role) VALUES
+              ('admin@company.com', 'Admin User', 'admin'),
+              ('alice@example.com', 'Alice Johnson', 'user'),
+              ('bob@example.com', 'Bob Smith', 'user'),
+              ('carol@example.com', 'Carol Brown', 'user');
+
+            INSERT INTO products (name, description, price, category, stock_quantity) VALUES
+              ('Laptop Pro 16', 'High-performance laptop for professionals', 2499.99, 'Electronics', 15),
+              ('Wireless Mouse', 'Ergonomic wireless mouse with precision tracking', 79.99, 'Accessories', 50),
+              ('Mechanical Keyboard', 'RGB mechanical keyboard for gaming and productivity', 149.99, 'Accessories', 30),
+              ('Monitor 4K 32"', 'Ultra-wide 4K monitor for creative work', 899.99, 'Electronics', 8),
+              ('Desk Lamp LED', 'Adjustable LED desk lamp with multiple color temperatures', 89.99, 'Office', 25);
+
+            INSERT INTO orders (user_id, total_amount, status) VALUES
+              (2, 2579.98, 'completed'),
+              (3, 229.98, 'pending'),
+              (4, 989.98, 'shipped');
+
+            INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES
+              (1, 1, 1, 2499.99),
+              (1, 2, 1, 79.99),
+              (2, 3, 1, 149.99),
+              (2, 2, 1, 79.99),
+              (3, 4, 1, 899.99),
+              (3, 5, 1, 89.99);
+
+            -- Create indexes for better performance
+            CREATE INDEX idx_users_email ON users(email);
+            CREATE INDEX idx_orders_user_id ON orders(user_id);
+            CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+            CREATE INDEX idx_products_category ON products(category);
+
+            -- Create a view for order summaries
+            CREATE VIEW order_summaries AS
+            SELECT
+              o.id as order_id,
+              u.name as customer_name,
+              u.email as customer_email,
+              o.total_amount,
+              o.status,
+              o.order_date,
+              COUNT(oi.id) as item_count
+            FROM orders o
+            JOIN users u ON o.user_id = u.id
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            GROUP BY o.id, u.name, u.email, o.total_amount, o.status, o.order_date;
+          EOF
+
+        env:
+          PGPASSWORD: demo_password # pragma: allowlist secret
+
+      - name: 🗄️ Create PR Preview Database
+        id: create-preview
+        uses: your-org/postgres-db-fork@v1  # Replace with your actual repository
+        with:
+          command: fork
+          source-host: localhost
+          source-port: ${{ job.services.postgres.ports['5432'] }}
+          source-user: demo_user
+          source-password: demo_password # pragma: allowlist secret
+          source-database: demo_staging_db
+          source-sslmode: disable
+          dest-host: localhost
+          dest-port: ${{ job.services.postgres.ports['5432'] }}
+          dest-user: demo_user
+          dest-password: demo_password # pragma: allowlist secret
+          dest-sslmode: disable
+          target-database: "myapp_pr_{{.PR_NUMBER}}_{{.BRANCH}}"
+          drop-if-exists: true
+          max-connections: 4
+          timeout: 10m
+          output-format: json
+          template-vars: '{"PR_NUMBER":"${{ github.event.number }}","BRANCH":"${{ github.head_ref }}"}'
+
+      - name: 🔍 Validate Preview Database
+        uses: your-org/postgres-db-fork@v1  # Replace with your actual repository
+        with:
+          command: validate
+          dest-host: localhost
+          dest-port: ${{ job.services.postgres.ports['5432'] }}
+          dest-user: demo_user
+          dest-password: demo_password # pragma: allowlist secret
+          dest-sslmode: disable
+          target-database: ${{ steps.create-preview.outputs.target-database }}
+          output-format: json
+
+      - name: 📊 Database Statistics
+        run: | # pragma: allowlist secret
+          TARGET_DB="${{ steps.create-preview.outputs.target-database }}"
+
+          echo "## 📊 Preview Database Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Database:** \`$TARGET_DB\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Get table statistics
+          PGPASSWORD=demo_password psql -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U demo_user -d "$TARGET_DB" -t -c " # pragma: allowlist secret
+            SELECT
+              'Users: ' || COUNT(*)
+            FROM users;
+          " | xargs echo "- " >> $GITHUB_STEP_SUMMARY
+
+          PGPASSWORD=demo_password psql -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U demo_user -d "$TARGET_DB" -t -c " # pragma: allowlist secret
+            SELECT
+              'Products: ' || COUNT(*)
+            FROM products;
+          " | xargs echo "- " >> $GITHUB_STEP_SUMMARY
+
+          PGPASSWORD=demo_password psql -h localhost -p ${{ job.services.postgres.ports['5432'] }} -U demo_user -d "$TARGET_DB" -t -c " # pragma: allowlist secret
+            SELECT
+              'Orders: ' || COUNT(*)
+            FROM orders;
+          " | xargs echo "- " >> $GITHUB_STEP_SUMMARY
+
+        env:
+          PGPASSWORD: demo_password # pragma: allowlist secret
+
+      - name: 💬 Comment on PR with Database Info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const dbName = '${{ steps.create-preview.outputs.target-database }}';
+            const connectionString = '${{ steps.create-preview.outputs.connection-string }}';
+            const prNumber = context.issue.number;
+            const branch = '${{ github.head_ref }}';
+
+            // In a real scenario, you would construct URLs to your actual preview environment
+            const previewUrl = `https://myapp-preview-pr${prNumber}.example.com`;
+            const adminUrl = `https://admin-pr${prNumber}.example.com`;
+
+            const comment = `## 🗄️ Preview Database Ready
+
+            Your PR preview database has been created successfully!
+
+            ### 📍 Database Details
+            - **Database Name:** \`${dbName}\`
+            - **Branch:** \`${branch}\`
+            - **PR Number:** #${prNumber}
+
+            ### 🔗 Quick Links
+            - 🌐 [Preview Application](${previewUrl})
+            - 🛠️ [Admin Interface](${adminUrl})
+            - 📊 [Database Metrics](https://monitoring.example.com/db/${dbName})
+
+            ### 📋 Available Test Data
+            - **Users:** 4 test users (including admin)
+            - **Products:** 5 sample products across different categories
+            - **Orders:** 3 test orders with various statuses
+            - **Views:** Order summary view for reporting
+
+            ### 🔧 Database Connection
+            <details>
+            <summary>Connection String (for local testing)</summary>
+
+            \`\`\`
+            ${connectionString}
+            \`\`\`
+
+            **Note:** This connection string is only accessible within the CI environment.
+            </details>
+
+            ### ⚡ Next Steps
+            1. Test your changes against this preview database
+            2. Verify migrations work correctly
+            3. Check performance with realistic data
+            4. Database will be automatically cleaned up when PR is closed
+
+            ---
+            *This database contains realistic test data and is refreshed with each push to the PR.*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+    outputs:
+      database-name: ${{ steps.create-preview.outputs.target-database }}
+      connection-string: ${{ steps.create-preview.outputs.connection-string }}
+
+  cleanup-preview-database:
+    name: Cleanup PR Preview Database
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+
+    # For demo purposes, we'll simulate cleanup
+    # In real usage, this would connect to your actual database servers
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: demo_password # pragma: allowlist secret
+          POSTGRES_USER: demo_user
+          POSTGRES_DB: demo_staging_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🧹 Cleanup PR Preview Database
+        uses: your-org/postgres-db-fork@v1  # Replace with your actual repository
+        with:
+          command: cleanup
+          dest-host: localhost
+          dest-port: ${{ job.services.postgres.ports['5432'] }}
+          dest-user: demo_user
+          dest-password: demo_password # pragma: allowlist secret
+          dest-sslmode: disable
+          target-database: "myapp_pr_${{ github.event.number }}_*"
+          output-format: json
+
+      - name: 💬 Comment on PR cleanup
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue.number;
+
+            const comment = `## 🧹 Preview Database Cleaned Up
+
+            The preview database for PR #${prNumber} has been automatically removed.
+
+            ### ✅ Cleanup Summary
+            - 🗄️ Database \`myapp_pr_${prNumber}_*\` deleted
+            - 🔄 Resources freed up
+            - 🛡️ Data securely removed
+
+            Thank you for using the preview database feature!
+
+            ---
+            *Cleanup is automatically triggered when a PR is closed.*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

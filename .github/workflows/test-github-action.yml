@@ -225,24 +225,24 @@ jobs:
             -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
             -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
             -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            -e "PGFORK_SOURCE_HOST=postgres"
+            -e "PGFORK_SOURCE_PORT=5432"
+            -e "PGFORK_SOURCE_USER=testuser"
+            -e "PGFORK_SOURCE_PASSWORD=testpass123"
+            -e "PGFORK_SOURCE_DATABASE=source_db"
+            -e "PGFORK_SOURCE_SSLMODE=disable"
+            -e "PGFORK_DEST_HOST=postgres"
+            -e "PGFORK_DEST_PORT=5432"
+            -e "PGFORK_DEST_USER=testuser"
+            -e "PGFORK_DEST_PASSWORD=testpass123"
+            -e "PGFORK_DEST_SSLMODE=disable"
+            -e "PGFORK_TARGET_DATABASE=test_pr_${{ github.run_number }}"
+            -e "PGFORK_DROP_IF_EXISTS=true"
+            -e "PGFORK_MAX_CONNECTIONS=4"
+            -e "PGFORK_TIMEOUT=5m"
+            -e "PGFORK_OUTPUT_FORMAT=json"
             postgres-db-fork-action:test
             fork
-            --source-host postgres
-            --source-port 5432
-            --source-user testuser
-            --source-password testpass123
-            --source-db source_db
-            --source-sslmode disable
-            --dest-host postgres
-            --dest-port 5432
-            --dest-user testuser
-            --dest-password testpass123
-            --dest-sslmode disable
-            --target-db "test_pr_${{ github.run_number }}"
-            --drop-if-exists
-            --max-connections 4
-            --timeout 5m
-            --output-format json
           )
 
           # Run the docker action using the same network as PostgreSQL service
@@ -350,15 +350,15 @@ jobs:
             -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
             -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
             -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            -e "PGFORK_DEST_HOST=postgres"
+            -e "PGFORK_DEST_PORT=5432"
+            -e "PGFORK_DEST_USER=testuser"
+            -e "PGFORK_DEST_PASSWORD=testpass123"
+            -e "PGFORK_DEST_SSLMODE=disable"
+            -e "PGFORK_TARGET_DATABASE=${{ steps.fork-test.outputs.target-database }}"
+            -e "PGFORK_OUTPUT_FORMAT=json"
             postgres-db-fork-action:test
             validate
-            --dest-host postgres
-            --dest-port 5432
-            --dest-user testuser
-            --dest-password testpass123
-            --dest-sslmode disable
-            --target-db "${{ steps.fork-test.outputs.target-database }}"
-            --output-format json
           )
 
           # Run the docker action using the same network as PostgreSQL service
@@ -391,15 +391,15 @@ jobs:
             -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
             -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
             -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            -e "PGFORK_DEST_HOST=postgres"
+            -e "PGFORK_DEST_PORT=5432"
+            -e "PGFORK_DEST_USER=testuser"
+            -e "PGFORK_DEST_PASSWORD=testpass123"
+            -e "PGFORK_DEST_SSLMODE=disable"
+            -e "PGFORK_TARGET_DATABASE=${{ steps.fork-test.outputs.target-database }}"
+            -e "PGFORK_OUTPUT_FORMAT=json"
             postgres-db-fork-action:test
             cleanup
-            --dest-host postgres
-            --dest-port 5432
-            --dest-user testuser
-            --dest-password testpass123
-            --dest-sslmode disable
-            --target-db "${{ steps.fork-test.outputs.target-database }}"
-            --output-format json
           )
 
           # Run the docker action using the same network as PostgreSQL service
@@ -500,10 +500,10 @@ jobs:
             -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
             -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
             -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            -e "CONFIG_FILE=test-config/fork-config.yaml"
+            -e "PGFORK_OUTPUT_FORMAT=json"
             postgres-db-fork-action:test
             test-connection
-            --config test-config/fork-config.yaml
-            --output-format json
           )
 
           # Run the docker action using the same network as PostgreSQL service
@@ -613,23 +613,23 @@ jobs:
             -e "PGFORK_VAR_COMMIT_SHORT=${{ github.sha }}"
             -e "PGFORK_VAR_RUN_ID=${{ github.run_id }}"
             -e "PGFORK_VAR_RUN_NUMBER=${{ github.run_number }}"
+            -e "PGFORK_SOURCE_HOST=postgres"
+            -e "PGFORK_SOURCE_PORT=5432"
+            -e "PGFORK_SOURCE_USER=testuser"
+            -e "PGFORK_SOURCE_PASSWORD=testpass123"
+            -e "PGFORK_SOURCE_DATABASE=testdb"
+            -e "PGFORK_SOURCE_SSLMODE=disable"
+            -e "PGFORK_DEST_HOST=postgres"
+            -e "PGFORK_DEST_PORT=5432"
+            -e "PGFORK_DEST_USER=testuser"
+            -e "PGFORK_DEST_PASSWORD=testpass123"
+            -e "PGFORK_DEST_SSLMODE=disable"
+            -e "PGFORK_TARGET_DATABASE=app_${BRANCH_NAME}_${{ github.run_id }}_pr${PR_NUMBER}"
+            -e "PGFORK_DROP_IF_EXISTS=true"
+            -e "PGFORK_DRY_RUN=true"
+            -e "PGFORK_OUTPUT_FORMAT=json"
             postgres-db-fork-action:test
             fork
-            --source-host postgres
-            --source-port 5432
-            --source-user testuser
-            --source-password testpass123
-            --source-db testdb
-            --source-sslmode disable
-            --dest-host postgres
-            --dest-port 5432
-            --dest-user testuser
-            --dest-password testpass123
-            --dest-sslmode disable
-            --target-db "app_${BRANCH_NAME}_${{ github.run_id }}_pr${PR_NUMBER}"
-            --drop-if-exists
-            --dry-run
-            --output-format json
           )
 
           # Run the docker action using the same network as PostgreSQL service

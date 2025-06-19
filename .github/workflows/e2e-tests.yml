@@ -27,7 +27,7 @@ jobs:
 
     strategy:
       matrix:
-        postgres_version: ["16"]
+        postgres_version: ["17-rc"]
         go_version: ["1.22"]
 
     services:
@@ -103,7 +103,7 @@ jobs:
 
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
-        if: matrix.postgres_version == '16' && matrix.go_version == '1.22'
+        if: matrix.postgres_version == '17-rc' && matrix.go_version == '1.22'
         with:
           name: coverage-reports
           path: |
@@ -129,7 +129,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-rc-alpine
         env:
           POSTGRES_PASSWORD: testpass # pragma: allowlist secret
           POSTGRES_USER: testuser
@@ -183,6 +183,11 @@ jobs:
           chmod +x scripts/run-e2e-tests.sh
           ./scripts/run-e2e-tests.sh coverage
         env:
+          POSTGRES_HOST: postgres
+          POSTGRES_PORT: "5432"
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass # pragma: allowlist secret
+          POSTGRES_DB: testdb
           POSTGRES_E2E_TEST: "true"
           DOCKER_API_VERSION: "1.40"
 
@@ -223,7 +228,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-rc-alpine
         env:
           POSTGRES_PASSWORD: testpass # pragma: allowlist secret
           POSTGRES_USER: testuser

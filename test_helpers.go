@@ -47,8 +47,77 @@ type TestEnvironment struct {
 	DB       *sql.DB
 }
 
+// setupFromCI connects to a PostgreSQL instance provided by a CI environment
+func setupFromCI(t *testing.T) (*TestEnvironment, func()) {
+	t.Log("CI environment detected, connecting to existing PostgreSQL service.")
+
+	testConfig := &TestConfig{
+		Host:         os.Getenv("POSTGRES_HOST"),
+		Port:         os.Getenv("POSTGRES_PORT"),
+		Username:     os.Getenv("POSTGRES_USER"),
+		Password:     os.Getenv("POSTGRES_PASSWORD"),
+		DatabaseName: os.Getenv("POSTGRES_DB"),
+	}
+
+	if testConfig.Host == "" || testConfig.Port == "" || testConfig.Username == "" || testConfig.DatabaseName == "" {
+		t.Fatal("Incomplete PostgreSQL connection details in CI environment. Ensure POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB are set.")
+		return nil, nil
+	}
+
+	var db *sql.DB
+	var err error
+
+	dsn := fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=disable", // pragma: allowlist secret
+		testConfig.Username,
+		testConfig.Password,
+		testConfig.Host,
+		testConfig.Port,
+		testConfig.DatabaseName,
+	)
+
+	// Retry connection
+	var attempts = 10
+	for i := 0; i < attempts; i++ {
+		db, err = sql.Open("postgres", dsn)
+		if err == nil {
+			err = db.Ping()
+			if err == nil {
+				break
+			}
+		}
+		t.Logf("Waiting for PostgreSQL service... (%d/%d)", i+1, attempts)
+		time.Sleep(2 * time.Second)
+	}
+
+	if err != nil {
+		t.Fatalf("Could not connect to PostgreSQL service in CI: %v", err)
+		return nil, nil
+	}
+
+	t.Log("Successfully connected to PostgreSQL service in CI.")
+
+	// Cleanup function does nothing in CI as the service is managed by the workflow
+	cleanup := func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Failed to close connection in CI: %v", err)
+		}
+	}
+
+	return &TestEnvironment{
+		Pool:     nil, // No pool in CI
+		Resource: nil, // No resource in CI
+		Config:   testConfig,
+		DB:       db,
+	}, cleanup
+}
+
 // SetupTestEnvironment creates a test PostgreSQL instance using Docker
 func SetupTestEnvironment(t *testing.T) (*TestEnvironment, func()) {
+	// If POSTGRES_HOST is set, assume we are in CI and connect to the service container
+	if os.Getenv("POSTGRES_HOST") != "" {
+		return setupFromCI(t)
+	}
 	// Skip if CI environment doesn't support Docker
 	if os.Getenv("SKIP_INTEGRATION_TESTS") == "true" {
 		t.Skip("Skipping integration tests - Docker not available")

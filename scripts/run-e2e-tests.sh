@@ -31,6 +31,11 @@ print_error() {
 
 # Check if Docker is available
 check_docker() {
+    # In CI, we assume Docker is available and managed by the environment.
+    if [ -n "$CI" ]; then
+        print_info "CI environment detected. Skipping Docker check."
+        return
+    fi
     print_info "Checking Docker availability..."
 
     if ! command -v docker &> /dev/null; then
@@ -50,6 +55,11 @@ check_docker() {
 
 # Clean up any existing test containers
 cleanup_containers() {
+    # In CI, service containers are managed by the workflow, so we shouldn't interfere.
+    if [ -n "$CI" ]; then
+        print_warning "CI environment detected. Skipping container cleanup to preserve service containers."
+        return
+    fi
     print_info "Cleaning up existing test containers..."
 
     # Remove any containers with postgres image that might be left over

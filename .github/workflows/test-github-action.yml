@@ -262,9 +262,14 @@ jobs:
             exit 1
           fi
 
-          # Extract outputs from the result
-          RESULT=$(jq -r '.success // "false"' fork_result.json)
-          TARGET_DB=$(jq -r '.database // ""' fork_result.json)
+          # Extract just the JSON part from the result (after the log lines)
+          # The JSON starts with '{' and ends with '}' - extract the complete JSON block
+          JSON_PART=$(sed -n '/^{/,/^}/p' fork_result.json)
+          echo "Extracted JSON: $JSON_PART"
+
+          # Extract outputs from the JSON
+          RESULT=$(echo "$JSON_PART" | jq -r '.success // "false"')
+          TARGET_DB=$(echo "$JSON_PART" | jq -r '.database // ""')
 
           # Set outputs for the step
           {

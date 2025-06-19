@@ -222,6 +222,14 @@ jobs:
           max-connections: 4
           timeout: 5m
           output-format: json
+        env:
+          # Pass GitHub context variables as environment variables
+          PGFORK_VAR_PR_NUMBER: ${{ github.event.number || github.run_number }}
+          PGFORK_VAR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PGFORK_VAR_COMMIT_SHA: ${{ github.sha }}
+          PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
+          PGFORK_VAR_RUN_ID: ${{ github.run_id }}
+          PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
 
       - name: Verify fork results
         run: | # pragma: allowlist secret
@@ -274,6 +282,14 @@ jobs:
           dest-sslmode: disable
           target-database: ${{ steps.fork-test.outputs.target-database }}
           output-format: json
+        env:
+          # Pass GitHub context variables as environment variables
+          PGFORK_VAR_PR_NUMBER: ${{ github.event.number || github.run_number }}
+          PGFORK_VAR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PGFORK_VAR_COMMIT_SHA: ${{ github.sha }}
+          PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
+          PGFORK_VAR_RUN_ID: ${{ github.run_id }}
+          PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
 
       - name: Test cleanup command
         uses: ./
@@ -286,6 +302,14 @@ jobs:
           dest-sslmode: disable
           target-database: ${{ steps.fork-test.outputs.target-database }}
           output-format: json
+        env:
+          # Pass GitHub context variables as environment variables
+          PGFORK_VAR_PR_NUMBER: ${{ github.event.number || github.run_number }}
+          PGFORK_VAR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PGFORK_VAR_COMMIT_SHA: ${{ github.sha }}
+          PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
+          PGFORK_VAR_RUN_ID: ${{ github.run_id }}
+          PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
 
   # Test action with configuration file
   test-action-config-file:
@@ -359,6 +383,14 @@ jobs:
           command: test-connection
           config-file: test-config/fork-config.yaml
           template-vars: '{"RUN_NUMBER":"${{ github.run_number }}"}'
+        env:
+          # Pass GitHub context variables as environment variables
+          PGFORK_VAR_PR_NUMBER: ${{ github.event.number || github.run_number }}
+          PGFORK_VAR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PGFORK_VAR_COMMIT_SHA: ${{ github.sha }}
+          PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
+          PGFORK_VAR_RUN_ID: ${{ github.run_id }}
+          PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
 
   # Test action error handling
   test-action-error-handling:
@@ -453,6 +485,14 @@ jobs:
           template-vars: '{"BRANCH":"${{ github.head_ref || github.ref_name }}","RUN_ID":"${{ github.run_id }}","PR_NUMBER":"${{ github.event.number || 123 }}"}'
           dry-run: true
           output-format: json
+        env:
+          # Pass GitHub context variables as environment variables
+          PGFORK_VAR_PR_NUMBER: ${{ github.event.number || 123 }}
+          PGFORK_VAR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PGFORK_VAR_COMMIT_SHA: ${{ github.sha }}
+          PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
+          PGFORK_VAR_RUN_ID: ${{ github.run_id }}
+          PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
 
   # Generate test summary
   test-summary:

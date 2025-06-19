@@ -159,6 +159,14 @@ jobs:
           timeout: 10m
           output-format: json
           template-vars: '{"PR_NUMBER":"${{ github.event.number }}","BRANCH":"${{ github.head_ref }}"}'
+        env:
+          # Pass GitHub context variables as environment variables
+          PGFORK_VAR_PR_NUMBER: ${{ github.event.number }}
+          PGFORK_VAR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PGFORK_VAR_COMMIT_SHA: ${{ github.sha }}
+          PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
+          PGFORK_VAR_RUN_ID: ${{ github.run_id }}
+          PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
 
       - name: 🔍 Validate Preview Database
         uses: your-org/postgres-db-fork@v1  # Replace with your actual repository
@@ -171,6 +179,14 @@ jobs:
           dest-sslmode: disable
           target-database: ${{ steps.create-preview.outputs.target-database }}
           output-format: json
+        env:
+          # Pass GitHub context variables as environment variables
+          PGFORK_VAR_PR_NUMBER: ${{ github.event.number }}
+          PGFORK_VAR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PGFORK_VAR_COMMIT_SHA: ${{ github.sha }}
+          PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
+          PGFORK_VAR_RUN_ID: ${{ github.run_id }}
+          PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
 
       - name: 📊 Database Statistics
         run: | # pragma: allowlist secret
@@ -304,6 +320,14 @@ jobs:
           dest-sslmode: disable
           target-database: "myapp_pr_${{ github.event.number }}_*"
           output-format: json
+        env:
+          # Pass GitHub context variables as environment variables
+          PGFORK_VAR_PR_NUMBER: ${{ github.event.number }}
+          PGFORK_VAR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PGFORK_VAR_COMMIT_SHA: ${{ github.sha }}
+          PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
+          PGFORK_VAR_RUN_ID: ${{ github.run_id }}
+          PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}
 
       - name: 💬 Comment on PR cleanup
         uses: actions/github-script@v7

@@ -151,11 +151,3 @@ runs:
     # Additional configuration
     CONFIG_FILE: ${{ inputs.config-file }}
     TEMPLATE_VARS: ${{ inputs.template-vars }}
-
-    # GitHub context
-    PGFORK_VAR_PR_NUMBER: ${{ github.event.number }}
-    PGFORK_VAR_BRANCH: ${{ github.head_ref || github.ref_name }}
-    PGFORK_VAR_COMMIT_SHA: ${{ github.sha }}
-    PGFORK_VAR_COMMIT_SHORT: ${{ github.sha }}
-    PGFORK_VAR_RUN_ID: ${{ github.run_id }}
-    PGFORK_VAR_RUN_NUMBER: ${{ github.run_number }}

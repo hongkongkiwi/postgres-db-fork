@@ -501,9 +501,11 @@ func validatePermissions(cfg *config.ForkConfig) []ValidationResult {
 	if err != nil {
 		return results // Connection already tested
 	}
-	if err := sourceConn.Close(); err != nil {
-		fmt.Printf("Warning: Failed to close source connection: %v\n", err)
-	}
+	defer func() {
+		if err := sourceConn.Close(); err != nil {
+			fmt.Printf("Warning: Failed to close source connection: %v\n", err)
+		}
+	}()
 
 	// Test SELECT permission
 	_, err = sourceConn.DB.Query("SELECT 1 LIMIT 1")
@@ -572,9 +574,11 @@ func validateResources(cfg *config.ForkConfig) []ValidationResult {
 	if err != nil {
 		return results
 	}
-	if err := sourceConn.Close(); err != nil {
-		fmt.Printf("Warning: Failed to close source connection: %v\n", err)
-	}
+	defer func() {
+		if err := sourceConn.Close(); err != nil {
+			fmt.Printf("Warning: Failed to close source connection: %v\n", err)
+		}
+	}()
 
 	sourceSize, err := sourceConn.GetDatabaseSize(cfg.Source.Database)
 	if err != nil {

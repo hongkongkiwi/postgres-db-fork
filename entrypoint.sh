@@ -6,14 +6,20 @@ set -e
 github_output() {
     local name="$1"
     local value="$2"
-    echo "${name}=${value}" >> "$GITHUB_OUTPUT"
+    # Only write to GITHUB_OUTPUT if it's set and the file/directory exists
+    if [ -n "$GITHUB_OUTPUT" ] && [ -w "$(dirname "$GITHUB_OUTPUT" 2>/dev/null || echo /dev/null)" ]; then
+        echo "${name}=${value}" >> "$GITHUB_OUTPUT"
+    fi
 }
 
 # Function to set GitHub environment variable
 github_env() {
     local name="$1"
     local value="$2"
-    echo "${name}=${value}" >> "$GITHUB_ENV"
+    # Only write to GITHUB_ENV if it's set and the file/directory exists
+    if [ -n "$GITHUB_ENV" ] && [ -w "$(dirname "$GITHUB_ENV" 2>/dev/null || echo /dev/null)" ]; then
+        echo "${name}=${value}" >> "$GITHUB_ENV"
+    fi
 }
 
 # Function to log info

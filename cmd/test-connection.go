@@ -590,6 +590,11 @@ func outputConnectionTestResult(result *ConnectionTestResult, outputFormat strin
 			return fmt.Errorf("failed to marshal test result: %w", err)
 		}
 		fmt.Println(string(jsonOutput))
+
+		// Return error if connection test failed
+		if result.Overall == "error" {
+			return fmt.Errorf("connection test failed")
+		}
 		return nil
 	}
 
@@ -619,6 +624,11 @@ func outputConnectionTestResult(result *ConnectionTestResult, outputFormat strin
 	}
 
 	fmt.Printf("\n%s\n", result.Summary)
+
+	// Return error if connection test failed
+	if result.Overall == "error" {
+		return fmt.Errorf("connection test failed")
+	}
 	return nil
 }
 

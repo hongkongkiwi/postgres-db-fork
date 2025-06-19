@@ -23,7 +23,6 @@ inputs:
   source-port:
     description: 'Source database port'
     required: false
-    default: '5432'
 
   source-user:
     description: 'Source database username'
@@ -40,7 +39,6 @@ inputs:
   source-sslmode:
     description: 'Source database SSL mode'
     required: false
-    default: 'prefer'
 
   dest-host:
     description: 'Destination database host'
@@ -49,7 +47,6 @@ inputs:
   dest-port:
     description: 'Destination database port'
     required: false
-    default: '5432'
 
   dest-user:
     description: 'Destination database username'
@@ -62,7 +59,6 @@ inputs:
   dest-sslmode:
     description: 'Destination database SSL mode'
     required: false
-    default: 'prefer'
 
   target-database:
     description: 'Target database name (supports templates like myapp_pr_{{.PR_NUMBER}})'

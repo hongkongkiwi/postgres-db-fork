@@ -65,6 +65,12 @@ if [ -n "$CONFIG_FILE" ]; then
     ARGS="$ARGS --config $CONFIG_FILE"
 fi
 
+# Check if we're using a config file
+USING_CONFIG_FILE=""
+if [ -n "$CONFIG_FILE" ]; then
+    USING_CONFIG_FILE="true"
+fi
+
 # Skip adding flags if command starts with -- (like --help, --version)
 if [ "${COMMAND#--}" = "$COMMAND" ]; then
     # Add flags based on command support
@@ -117,85 +123,88 @@ if [ "${COMMAND#--}" = "$COMMAND" ]; then
         fi
     fi
 
-    # Add database connection flags for commands that need them
-    if [ "$COMMAND" = "fork" ] || [ "$COMMAND" = "validate" ]; then
-        if [ -n "$PGFORK_SOURCE_HOST" ]; then
-            ARGS="$ARGS --source-host $PGFORK_SOURCE_HOST"
-        fi
-        if [ -n "$PGFORK_SOURCE_PORT" ]; then
-            ARGS="$ARGS --source-port $PGFORK_SOURCE_PORT"
-        fi
-        if [ -n "$PGFORK_SOURCE_USER" ]; then
-            ARGS="$ARGS --source-user $PGFORK_SOURCE_USER"
-        fi
-        if [ -n "$PGFORK_SOURCE_PASSWORD" ]; then
-            ARGS="$ARGS --source-password $PGFORK_SOURCE_PASSWORD"
-        fi
-        if [ -n "$PGFORK_SOURCE_DATABASE" ]; then
-            ARGS="$ARGS --source-db $PGFORK_SOURCE_DATABASE"
-        fi
-        if [ -n "$PGFORK_SOURCE_SSLMODE" ]; then
-            ARGS="$ARGS --source-sslmode $PGFORK_SOURCE_SSLMODE"
-        fi
+    # Only add database connection flags if NOT using config file OR if explicitly overridden
+    if [ -z "$USING_CONFIG_FILE" ]; then
+        # Add database connection flags for commands that need them
+        if [ "$COMMAND" = "fork" ] || [ "$COMMAND" = "validate" ]; then
+            if [ -n "$PGFORK_SOURCE_HOST" ]; then
+                ARGS="$ARGS --source-host $PGFORK_SOURCE_HOST"
+            fi
+            if [ -n "$PGFORK_SOURCE_PORT" ]; then
+                ARGS="$ARGS --source-port $PGFORK_SOURCE_PORT"
+            fi
+            if [ -n "$PGFORK_SOURCE_USER" ]; then
+                ARGS="$ARGS --source-user $PGFORK_SOURCE_USER"
+            fi
+            if [ -n "$PGFORK_SOURCE_PASSWORD" ]; then
+                ARGS="$ARGS --source-password $PGFORK_SOURCE_PASSWORD"
+            fi
+            if [ -n "$PGFORK_SOURCE_DATABASE" ]; then
+                ARGS="$ARGS --source-db $PGFORK_SOURCE_DATABASE"
+            fi
+            if [ -n "$PGFORK_SOURCE_SSLMODE" ]; then
+                ARGS="$ARGS --source-sslmode $PGFORK_SOURCE_SSLMODE"
+            fi
 
-        if [ -n "$PGFORK_DEST_HOST" ]; then
-            ARGS="$ARGS --dest-host $PGFORK_DEST_HOST"
-        fi
-        if [ -n "$PGFORK_DEST_PORT" ]; then
-            ARGS="$ARGS --dest-port $PGFORK_DEST_PORT"
-        fi
-        if [ -n "$PGFORK_DEST_USER" ]; then
-            ARGS="$ARGS --dest-user $PGFORK_DEST_USER"
-        fi
-        if [ -n "$PGFORK_DEST_PASSWORD" ]; then
-            ARGS="$ARGS --dest-password $PGFORK_DEST_PASSWORD"
-        fi
-        if [ -n "$PGFORK_DEST_SSLMODE" ]; then
-            ARGS="$ARGS --dest-sslmode $PGFORK_DEST_SSLMODE"
-        fi
+            if [ -n "$PGFORK_DEST_HOST" ]; then
+                ARGS="$ARGS --dest-host $PGFORK_DEST_HOST"
+            fi
+            if [ -n "$PGFORK_DEST_PORT" ]; then
+                ARGS="$ARGS --dest-port $PGFORK_DEST_PORT"
+            fi
+            if [ -n "$PGFORK_DEST_USER" ]; then
+                ARGS="$ARGS --dest-user $PGFORK_DEST_USER"
+            fi
+            if [ -n "$PGFORK_DEST_PASSWORD" ]; then
+                ARGS="$ARGS --dest-password $PGFORK_DEST_PASSWORD"
+            fi
+            if [ -n "$PGFORK_DEST_SSLMODE" ]; then
+                ARGS="$ARGS --dest-sslmode $PGFORK_DEST_SSLMODE"
+            fi
 
-        if [ -n "$PGFORK_TARGET_DATABASE" ]; then
-            ARGS="$ARGS --target-db $PGFORK_TARGET_DATABASE"
-        fi
-    elif [ "$COMMAND" = "cleanup" ] || [ "$COMMAND" = "list" ] || [ "$COMMAND" = "ps" ]; then
-        # These commands use different flag names
-        if [ -n "$PGFORK_DEST_HOST" ]; then
-            ARGS="$ARGS --host $PGFORK_DEST_HOST"
-        fi
-        if [ -n "$PGFORK_DEST_PORT" ]; then
-            ARGS="$ARGS --port $PGFORK_DEST_PORT"
-        fi
-        if [ -n "$PGFORK_DEST_USER" ]; then
-            ARGS="$ARGS --user $PGFORK_DEST_USER"
-        fi
-        if [ -n "$PGFORK_DEST_PASSWORD" ]; then
-            ARGS="$ARGS --password $PGFORK_DEST_PASSWORD"
-        fi
-        if [ -n "$PGFORK_DEST_SSLMODE" ]; then
-            ARGS="$ARGS --sslmode $PGFORK_DEST_SSLMODE"
-        fi
-        # Cleanup command specific flags
-        if [ "$COMMAND" = "cleanup" ] && [ -n "$PGFORK_TARGET_DATABASE" ]; then
-            ARGS="$ARGS --pattern $PGFORK_TARGET_DATABASE"
-        fi
-    elif [ "$COMMAND" = "test-connection" ]; then
-        # test-connection uses different flag names and does NOT support --password flag
-        if [ -n "$PGFORK_SOURCE_HOST" ]; then
-            ARGS="$ARGS --host $PGFORK_SOURCE_HOST"
-        fi
-        if [ -n "$PGFORK_SOURCE_PORT" ]; then
-            ARGS="$ARGS --port $PGFORK_SOURCE_PORT"
-        fi
-        if [ -n "$PGFORK_SOURCE_USER" ]; then
-            ARGS="$ARGS --user $PGFORK_SOURCE_USER"
-        fi
-        # NOTE: test-connection does NOT accept --password flag for security reasons
-        # Password should be provided via environment variables or config file
-        if [ -n "$PGFORK_SOURCE_DATABASE" ]; then
-            ARGS="$ARGS --database $PGFORK_SOURCE_DATABASE"
-        fi
-        if [ -n "$PGFORK_SOURCE_SSLMODE" ]; then
-            ARGS="$ARGS --sslmode $PGFORK_SOURCE_SSLMODE"
+            if [ -n "$PGFORK_TARGET_DATABASE" ]; then
+                ARGS="$ARGS --target-db $PGFORK_TARGET_DATABASE"
+            fi
+        elif [ "$COMMAND" = "cleanup" ] || [ "$COMMAND" = "list" ] || [ "$COMMAND" = "ps" ]; then
+            # These commands use different flag names
+            if [ -n "$PGFORK_DEST_HOST" ]; then
+                ARGS="$ARGS --host $PGFORK_DEST_HOST"
+            fi
+            if [ -n "$PGFORK_DEST_PORT" ]; then
+                ARGS="$ARGS --port $PGFORK_DEST_PORT"
+            fi
+            if [ -n "$PGFORK_DEST_USER" ]; then
+                ARGS="$ARGS --user $PGFORK_DEST_USER"
+            fi
+            if [ -n "$PGFORK_DEST_PASSWORD" ]; then
+                ARGS="$ARGS --password $PGFORK_DEST_PASSWORD"
+            fi
+            if [ -n "$PGFORK_DEST_SSLMODE" ]; then
+                ARGS="$ARGS --sslmode $PGFORK_DEST_SSLMODE"
+            fi
+            # Cleanup command specific flags
+            if [ "$COMMAND" = "cleanup" ] && [ -n "$PGFORK_TARGET_DATABASE" ]; then
+                ARGS="$ARGS --pattern $PGFORK_TARGET_DATABASE"
+            fi
+        elif [ "$COMMAND" = "test-connection" ]; then
+            # test-connection uses different flag names and does NOT support --password flag
+            if [ -n "$PGFORK_SOURCE_HOST" ]; then
+                ARGS="$ARGS --host $PGFORK_SOURCE_HOST"
+            fi
+            if [ -n "$PGFORK_SOURCE_PORT" ]; then
+                ARGS="$ARGS --port $PGFORK_SOURCE_PORT"
+            fi
+            if [ -n "$PGFORK_SOURCE_USER" ]; then
+                ARGS="$ARGS --user $PGFORK_SOURCE_USER"
+            fi
+            # NOTE: test-connection does NOT accept --password flag for security reasons
+            # Password should be provided via environment variables or config file
+            if [ -n "$PGFORK_SOURCE_DATABASE" ]; then
+                ARGS="$ARGS --database $PGFORK_SOURCE_DATABASE"
+            fi
+            if [ -n "$PGFORK_SOURCE_SSLMODE" ]; then
+                ARGS="$ARGS --sslmode $PGFORK_SOURCE_SSLMODE"
+            fi
         fi
     fi
 fi

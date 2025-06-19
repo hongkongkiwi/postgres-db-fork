@@ -276,10 +276,16 @@ tasks:
           # Remove 'v' prefix if present
           current=${current#v}
 
-          IFS='.' read -ra PARTS <<< "$current"
-          major=${PARTS[0]:-0}
-          minor=${PARTS[1]:-0}
-          patch=${PARTS[2]:-0}
+          # Split version into components using parameter expansion (POSIX compatible)
+          major=${current%%.*}
+          remaining=${current#*.}
+          minor=${remaining%%.*}
+          patch=${remaining#*.}
+
+          # Set defaults if empty
+          major=${major:-0}
+          minor=${minor:-0}
+          patch=${patch:-0}
 
           case "{{.TYPE}}" in
             "major")

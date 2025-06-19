@@ -303,7 +303,7 @@ jobs:
           echo "Target database: ${{ steps.fork-test.outputs.target-database }}"
           echo "Connection string: ${{ steps.fork-test.outputs.connection-string }}"
 
-          if [ "${{ steps.fork-test.outputs.result }}" != "success" ]; then
+          if [ "${{ steps.fork-test.outputs.result }}" != "true" ]; then
             echo "❌ Fork operation failed"
             exit 1
           fi
@@ -465,7 +465,7 @@ jobs:
           source:
             host: postgres
             port: 5432
-            user: testuser
+            username: testuser
             password: testpass123 # pragma: allowlist secret
             database: testdb
             sslmode: disable
@@ -473,7 +473,7 @@ jobs:
           destination:
             host: postgres
             port: 5432
-            user: testuser
+            username: testuser
             password: testpass123 # pragma: allowlist secret
             sslmode: disable
 

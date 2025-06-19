@@ -114,8 +114,8 @@ jobs:
         uses: ./
         with:
           command: test-connection
-          source-host: 127.0.0.1
-          source-port: ${{ job.services.postgres.ports['5432'] }}
+          source-host: postgres
+          source-port: 5432
           source-user: testuser
           source-password: testpass123 # pragma: allowlist secret
           source-database: testdb
@@ -552,13 +552,13 @@ jobs:
         uses: ./
         with:
           command: fork
-          source-host: 127.0.0.1
-          source-port: ${{ job.services.postgres.ports['5432'] }}
+          source-host: postgres
+          source-port: 5432
           source-user: testuser
           source-password: testpass123 # pragma: allowlist secret
           source-database: testdb
-          dest-host: 127.0.0.1
-          dest-port: ${{ job.services.postgres.ports['5432'] }}
+          dest-host: postgres
+          dest-port: 5432
           dest-user: testuser
           dest-password: testpass123 # pragma: allowlist secret
           target-database: "app_{{.BRANCH}}_{{.RUN_ID}}_pr{{.PR_NUMBER}}"

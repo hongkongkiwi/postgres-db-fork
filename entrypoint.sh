@@ -6,7 +6,7 @@ set -e
 github_output() {
     local name="$1"
     local value="$2"
-    echo "::set-output name=${name}::${value}"
+    echo "${name}=${value}" >> "$GITHUB_OUTPUT"
 }
 
 # Function to set GitHub environment variable
@@ -59,24 +59,29 @@ if [ -n "$CONFIG_FILE" ]; then
     ARGS="$ARGS --config $CONFIG_FILE"
 fi
 
-# Add other flags based on environment variables
-if [ "$PGFORK_QUIET" = "true" ]; then
+# Add flags based on command support
+# --quiet is supported by: fork, validate, ps, cleanup, list
+if [ "$PGFORK_QUIET" = "true" ] && ([ "$COMMAND" = "fork" ] || [ "$COMMAND" = "validate" ] || [ "$COMMAND" = "ps" ] || [ "$COMMAND" = "cleanup" ] || [ "$COMMAND" = "list" ]); then
     ARGS="$ARGS --quiet"
 fi
 
-if [ "$PGFORK_DRY_RUN" = "true" ]; then
+# --dry-run is supported by: fork, cleanup, branch (delete)
+if [ "$PGFORK_DRY_RUN" = "true" ] && ([ "$COMMAND" = "fork" ] || [ "$COMMAND" = "cleanup" ]); then
     ARGS="$ARGS --dry-run"
 fi
 
-if [ "$PGFORK_DROP_IF_EXISTS" = "true" ]; then
+# --drop-if-exists is supported by: fork only
+if [ "$PGFORK_DROP_IF_EXISTS" = "true" ] && [ "$COMMAND" = "fork" ]; then
     ARGS="$ARGS --drop-if-exists"
 fi
 
-if [ "$PGFORK_SCHEMA_ONLY" = "true" ]; then
+# --schema-only is supported by: fork, diff, branch (create)
+if [ "$PGFORK_SCHEMA_ONLY" = "true" ] && [ "$COMMAND" = "fork" ]; then
     ARGS="$ARGS --schema-only"
 fi
 
-if [ "$PGFORK_DATA_ONLY" = "true" ]; then
+# --data-only is supported by: fork only
+if [ "$PGFORK_DATA_ONLY" = "true" ] && [ "$COMMAND" = "fork" ]; then
     ARGS="$ARGS --data-only"
 fi
 
@@ -85,16 +90,24 @@ if [ -n "$PGFORK_OUTPUT_FORMAT" ]; then
     ARGS="$ARGS --output-format $PGFORK_OUTPUT_FORMAT"
 fi
 
-if [ -n "$PGFORK_MAX_CONNECTIONS" ]; then
-    ARGS="$ARGS --max-connections $PGFORK_MAX_CONNECTIONS"
-fi
+# Add fork-specific flags only for commands that support them
+if [ "$COMMAND" = "fork" ]; then
+    if [ -n "$PGFORK_MAX_CONNECTIONS" ]; then
+        ARGS="$ARGS --max-connections $PGFORK_MAX_CONNECTIONS"
+    fi
 
-if [ -n "$PGFORK_CHUNK_SIZE" ]; then
-    ARGS="$ARGS --chunk-size $PGFORK_CHUNK_SIZE"
-fi
+    if [ -n "$PGFORK_CHUNK_SIZE" ]; then
+        ARGS="$ARGS --chunk-size $PGFORK_CHUNK_SIZE"
+    fi
 
-if [ -n "$PGFORK_TIMEOUT" ]; then
-    ARGS="$ARGS --timeout $PGFORK_TIMEOUT"
+    if [ -n "$PGFORK_TIMEOUT" ]; then
+        ARGS="$ARGS --timeout $PGFORK_TIMEOUT"
+    fi
+elif [ "$COMMAND" = "test-connection" ]; then
+    # test-connection supports timeout but not max-connections or chunk-size
+    if [ -n "$PGFORK_TIMEOUT" ]; then
+        ARGS="$ARGS --timeout $PGFORK_TIMEOUT"
+    fi
 fi
 
 # Add database connection flags for commands that need them
@@ -168,6 +181,9 @@ elif [ "$COMMAND" = "test-connection" ]; then
     fi
     if [ -n "$PGFORK_SOURCE_USER" ]; then
         ARGS="$ARGS --user $PGFORK_SOURCE_USER"
+    fi
+    if [ -n "$PGFORK_SOURCE_PASSWORD" ]; then
+        ARGS="$ARGS --password $PGFORK_SOURCE_PASSWORD"
     fi
     if [ -n "$PGFORK_SOURCE_DATABASE" ]; then
         ARGS="$ARGS --database $PGFORK_SOURCE_DATABASE"

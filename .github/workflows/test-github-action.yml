@@ -248,7 +248,9 @@ jobs:
             echo "result=${RESULT}"
             echo "target-database=${TARGET_DB}"
             # pragma: allowlist secret
-            echo "connection-string=postgresql://testuser:testpass123@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/${TARGET_DB}"
+            CONN_STRING="postgresql://testuser:testpass123@127.0.0.1:"
+            CONN_STRING="${CONN_STRING}${{ job.services.postgres.ports['5432'] }}/${TARGET_DB}"
+            echo "connection-string=${CONN_STRING}"
           } >> "$GITHUB_OUTPUT"
 
           # Show the full result

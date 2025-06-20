@@ -159,17 +159,36 @@ func (dtm *DataTransferManager) transferSchema(ctx context.Context) error {
 	defer dtm.closePipe(writer, "schema writer")
 
 	// Configure pg_dump for schema only
-	dumpCmd := exec.CommandContext(ctx, "pg_dump",
+	dumpArgs := []string{
 		"--schema-only",
 		"--format=custom",
+		"--no-comments",
+		"--no-security-labels",
+		"--no-tablespaces",
+		"--no-owner",
+		"--no-privileges",
 		"-d", dtm.sourceCfg.ConnectionString(),
-	)
+	}
+
+	// Add table filtering if specified
+	if len(dtm.config.IncludeTables) > 0 {
+		// If include list is specified, only include those tables (ignore exclude list)
+		for _, table := range dtm.config.IncludeTables {
+			dumpArgs = append(dumpArgs, "--table="+table)
+		}
+	} else if len(dtm.config.ExcludeTables) > 0 {
+		// Only apply exclude list if no include list is specified
+		for _, table := range dtm.config.ExcludeTables {
+			dumpArgs = append(dumpArgs, "--exclude-table="+table)
+		}
+	}
+
+	dumpCmd := exec.CommandContext(ctx, "pg_dump", dumpArgs...)
 	dumpCmd.Stdout = writer
 	dumpCmd.Stderr = os.Stderr // Forward errors for visibility
 
 	// Configure pg_restore
 	restoreCmd := exec.CommandContext(ctx, "pg_restore",
-		"--exit-on-error",
 		"-d", dtm.destCfg.ConnectionString(),
 	)
 	restoreCmd.Stdin = reader
@@ -220,18 +239,37 @@ func (dtm *DataTransferManager) transferDataOptimized(ctx context.Context) error
 	defer dtm.closePipe(writer, "data writer")
 
 	// Configure pg_dump command
-	dumpCmd := exec.CommandContext(ctx, "pg_dump",
+	dumpArgs := []string{
 		"--data-only",
 		"--format=custom", // Use custom format for pg_restore
+		"--no-comments",
+		"--no-security-labels",
+		"--no-tablespaces",
+		"--no-owner",
+		"--no-privileges",
 		"-d", dtm.sourceCfg.ConnectionString(),
-	)
+	}
+
+	// Add table filtering if specified
+	if len(dtm.config.IncludeTables) > 0 {
+		// If include list is specified, only include those tables (ignore exclude list)
+		for _, table := range dtm.config.IncludeTables {
+			dumpArgs = append(dumpArgs, "--table="+table)
+		}
+	} else if len(dtm.config.ExcludeTables) > 0 {
+		// Only apply exclude list if no include list is specified
+		for _, table := range dtm.config.ExcludeTables {
+			dumpArgs = append(dumpArgs, "--exclude-table="+table)
+		}
+	}
+
+	dumpCmd := exec.CommandContext(ctx, "pg_dump", dumpArgs...)
 	dumpCmd.Stdout = writer
 	dumpCmd.Stderr = os.Stderr // Forward errors to stderr for visibility
 
 	// Configure pg_restore command
 	restoreCmd := exec.CommandContext(ctx, "pg_restore",
 		"--data-only",
-		"--exit-on-error",
 		"-d", dtm.destCfg.ConnectionString(),
 	)
 	restoreCmd.Stdin = reader
@@ -282,7 +320,7 @@ func (dtm *DataTransferManager) closePipe(closer io.Closer, name string) {
 // filterTables filters tables based on include/exclude configuration
 func (dtm *DataTransferManager) filterTables(tables []string) []string {
 	if len(dtm.config.IncludeTables) > 0 {
-		// If include list is specified, only include those tables
+		// If include list is specified, only include those tables (ignore exclude list)
 		var filtered []string
 		includeMap := make(map[string]bool)
 		for _, table := range dtm.config.IncludeTables {
@@ -293,11 +331,11 @@ func (dtm *DataTransferManager) filterTables(tables []string) []string {
 				filtered = append(filtered, table)
 			}
 		}
-		tables = filtered
+		return filtered
 	}
 
 	if len(dtm.config.ExcludeTables) > 0 {
-		// Remove excluded tables
+		// Only apply exclude list if no include list is specified
 		excludeMap := make(map[string]bool)
 		for _, table := range dtm.config.ExcludeTables {
 			excludeMap[table] = true
@@ -308,7 +346,7 @@ func (dtm *DataTransferManager) filterTables(tables []string) []string {
 				filtered = append(filtered, table)
 			}
 		}
-		tables = filtered
+		return filtered
 	}
 
 	return tables

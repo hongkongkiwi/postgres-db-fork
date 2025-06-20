@@ -222,7 +222,12 @@ func (dtm *DataTransferManager) transferSchema(ctx context.Context) error {
 		return fmt.Errorf("pg_dump (schema) failed: %w", dumpErr)
 	}
 	if restoreErr != nil {
-		return fmt.Errorf("pg_restore (schema) failed: %w", restoreErr)
+		// Check if this is just a warning about ignored errors (common with version mismatches)
+		if exitErr, ok := restoreErr.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			dtm.logger.Warnf("pg_restore completed with warnings (exit code 1), continuing...")
+		} else {
+			return fmt.Errorf("pg_restore (schema) failed: %w", restoreErr)
+		}
 	}
 
 	dtm.logger.Info("Schema transfer completed successfully")
@@ -303,7 +308,12 @@ func (dtm *DataTransferManager) transferDataOptimized(ctx context.Context) error
 		return fmt.Errorf("pg_dump failed: %w", dumpErr)
 	}
 	if restoreErr != nil {
-		return fmt.Errorf("pg_restore failed: %w", restoreErr)
+		// Check if this is just a warning about ignored errors (common with version mismatches)
+		if exitErr, ok := restoreErr.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			dtm.logger.Warnf("pg_restore completed with warnings (exit code 1), continuing...")
+		} else {
+			return fmt.Errorf("pg_restore failed: %w", restoreErr)
+		}
 	}
 
 	dtm.logger.Info("Optimized data transfer completed successfully")

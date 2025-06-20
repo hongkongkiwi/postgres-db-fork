@@ -10,6 +10,7 @@ import (
 	"github.com/hongkongkiwi/postgres-db-fork/internal/config"
 	"github.com/hongkongkiwi/postgres-db-fork/internal/fork"
 
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -112,6 +113,9 @@ func init() {
 	forkCmd.Flags().Bool("env-vars", true, "Load configuration from PGFORK_* environment variables")
 	forkCmd.Flags().Bool("background", false, "Run fork operation in background (daemon mode)")
 
+	// Interactive mode
+	forkCmd.Flags().Bool("interactive", false, "Run in interactive mode to be prompted for configuration")
+
 	// Mark required flags
 	if err := forkCmd.MarkFlagRequired("source-db"); err != nil {
 		panic(fmt.Sprintf("Failed to mark flag as required: %v", err))
@@ -165,8 +169,14 @@ func runFork(cmd *cobra.Command, args []string) error {
 	// Build configuration from flags and config file
 	cfg := &config.ForkConfig{}
 
-	// Load from environment variables if enabled
-	if envVars, _ := cmd.Flags().GetBool("env-vars"); envVars {
+	// Check for interactive mode
+	interactive, _ := cmd.Flags().GetBool("interactive")
+	if interactive {
+		if err := runInteractiveMode(cfg); err != nil {
+			return err
+		}
+	} else {
+		// Load from environment if not interactive
 		cfg.LoadFromEnvironment()
 	}
 
@@ -317,6 +327,113 @@ func runFork(cmd *cobra.Command, args []string) error {
 	}
 
 	return outputResult(cfg, true, "Database fork completed successfully", "", duration)
+}
+
+// runInteractiveMode guides the user through setting up the fork configuration
+func runInteractiveMode(cfg *config.ForkConfig) error {
+	fmt.Println("🚀 Starting interactive fork setup...")
+
+	// Source Database Questions
+	sourceQuestions := []*survey.Question{
+		{
+			Name:     "Host",
+			Prompt:   &survey.Input{Message: "Source Host:", Default: "localhost"},
+			Validate: survey.Required,
+		},
+		{
+			Name:     "Port",
+			Prompt:   &survey.Input{Message: "Source Port:", Default: "5432"},
+			Validate: survey.Required,
+		},
+		{
+			Name:     "Username",
+			Prompt:   &survey.Input{Message: "Source Username:", Default: "postgres"},
+			Validate: survey.Required,
+		},
+		{
+			Name:   "Password",
+			Prompt: &survey.Password{Message: "Source Password:"},
+		},
+		{
+			Name:     "Database",
+			Prompt:   &survey.Input{Message: "Source Database Name:"},
+			Validate: survey.Required,
+		},
+	}
+	fmt.Println("\n--- Source Database ---")
+	if err := survey.Ask(sourceQuestions, &cfg.Source); err != nil {
+		return err
+	}
+
+	// Ask if destination is the same server
+	isSameServer := false
+	promptSame := &survey.Confirm{
+		Message: "Is the destination on the same server as the source?",
+		Default: true,
+	}
+	if err := survey.AskOne(promptSame, &isSameServer); err != nil {
+		return err
+	}
+
+	if isSameServer {
+		cfg.Destination = cfg.Source
+	} else {
+		// Destination Database Questions
+		destQuestions := []*survey.Question{
+			{
+				Name:     "Host",
+				Prompt:   &survey.Input{Message: "Destination Host:"},
+				Validate: survey.Required,
+			},
+			{
+				Name:     "Port",
+				Prompt:   &survey.Input{Message: "Destination Port:", Default: "5432"},
+				Validate: survey.Required,
+			},
+			{
+				Name:     "Username",
+				Prompt:   &survey.Input{Message: "Destination Username:"},
+				Validate: survey.Required,
+			},
+			{
+				Name:   "Password",
+				Prompt: &survey.Password{Message: "Destination Password:"},
+			},
+		}
+		fmt.Println("\n--- Destination Server ---")
+		if err := survey.Ask(destQuestions, &cfg.Destination); err != nil {
+			return err
+		}
+	}
+
+	// Target Database Name
+	targetPrompt := &survey.Input{Message: "New (target) database name:"}
+	if err := survey.AskOne(targetPrompt, &cfg.TargetDatabase, survey.WithValidator(survey.Required)); err != nil {
+		return err
+	}
+
+	// Fork Options
+	optionsQuestions := []*survey.Question{
+		{
+			Name:   "DropIfExists",
+			Prompt: &survey.Confirm{Message: "Drop target database if it already exists?", Default: false},
+		},
+		{
+			Name:   "SchemaOnly",
+			Prompt: &survey.Confirm{Message: "Transfer schema only (no data)?", Default: false},
+		},
+		{
+			Name:   "DataOnly",
+			Prompt: &survey.Confirm{Message: "Transfer data only (no schema)?", Default: false},
+		},
+	}
+	fmt.Println("\n--- Fork Options ---")
+	if err := survey.Ask(optionsQuestions, cfg); err != nil {
+		return err
+	}
+
+	fmt.Println("\n✅ Configuration complete!")
+	return nil
 }
 
 // handleDryRun handles dry run mode

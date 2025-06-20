@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
 
 	"github.com/hongkongkiwi/postgres-db-fork/internal/config"
 	"github.com/hongkongkiwi/postgres-db-fork/internal/db"
+	"github.com/hongkongkiwi/postgres-db-fork/internal/logging"
 
 	"github.com/spf13/cobra"
 )
@@ -243,31 +245,35 @@ func checkFileSystem() []DoctorResult {
 	stateDir := filepath.Join(os.TempDir(), "postgres-db-fork", "jobs")
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
 		results = append(results, DoctorResult{
-			Check:   "state_directory",
+			Check:   "state_directory_creation",
 			Status:  "fail",
 			Message: "Cannot create job state directory",
 			Details: err.Error(),
 		})
 	} else {
-		// Test write permissions
-		testFile := filepath.Join(stateDir, "test-write")
+		results = append(results, DoctorResult{
+			Check:   "state_directory_creation",
+			Status:  "pass",
+			Message: "Job state directory is accessible",
+			Details: stateDir,
+		})
+
+		// Check write permissions
+		testFile := filepath.Join(stateDir, "test.tmp")
 		if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
 			results = append(results, DoctorResult{
-				Check:   "state_directory",
+				Check:   "state_directory_write_perms",
 				Status:  "fail",
-				Message: "Job state directory not writable",
+				Message: "Cannot write to job state directory",
 				Details: err.Error(),
 			})
 		} else {
-			if err := os.Remove(testFile); err != nil {
-				fmt.Printf("Warning: Failed to remove test file: %v\n", err)
-			}
 			results = append(results, DoctorResult{
-				Check:   "state_directory",
+				Check:   "state_directory_write_perms",
 				Status:  "pass",
-				Message: "Job state directory accessible",
-				Details: stateDir,
+				Message: "Write permissions are correct for job state directory",
 			})
+			_ = os.Remove(testFile)
 		}
 	}
 
@@ -296,80 +302,84 @@ func checkFileSystem() []DoctorResult {
 }
 
 func checkDatabaseConnectivity() []DoctorResult {
-	var results []DoctorResult
-
-	// Try to create a basic configuration and test connectivity
+	doctorLogger, _ := logging.NewLogger(&logging.Config{Level: "info", Format: "text"})
+	// Load config from environment to check for source details
 	cfg := &config.ForkConfig{}
 	cfg.LoadFromEnvironment()
 
-	if cfg.Source.Host == "" {
-		results = append(results, DoctorResult{
-			Check:   "database_connectivity",
-			Status:  "pass",
-			Message: "No database configuration provided",
-			Details: "Skipping database connectivity test - provide PGFORK_SOURCE_HOST to test",
-		})
-		return results
+	// Only test if source is configured
+	if cfg.Source.Host == "" || cfg.Source.Username == "" || cfg.Source.Database == "" {
+		return []DoctorResult{
+			{
+				Check:   "source_database_connection",
+				Status:  "warn",
+				Message: "Source database not configured, skipping connection test.",
+				Details: "Set PGFORK_SOURCE_* environment variables to enable this check.",
+			},
+		}
 	}
 
-	// Test source database connectivity
-	sourceConn, err := db.NewConnection(&cfg.Source)
+	// Attempt connection to source
+	conn, err := db.NewConnection(&cfg.Source)
 	if err != nil {
-		results = append(results, DoctorResult{
-			Check:   "source_database",
-			Status:  "fail",
-			Message: "Cannot connect to source database",
-			Details: err.Error(),
-		})
-	} else {
-		if err := sourceConn.Close(); err != nil {
-			fmt.Printf("Warning: Failed to close source connection: %v\n", err)
-		}
-		results = append(results, DoctorResult{
-			Check:   "source_database",
-			Status:  "pass",
-			Message: "Source database connection successful",
-			Details: fmt.Sprintf("%s:%d/%s", cfg.Source.Host, cfg.Source.Port, cfg.Source.Database),
-		})
-	}
-
-	// Test destination database connectivity (if different from source)
-	if !cfg.IsSameServer() && cfg.Destination.Host != "" {
-		destConn, err := db.NewConnection(&cfg.Destination)
-		if err != nil {
-			results = append(results, DoctorResult{
-				Check:   "destination_database",
+		return []DoctorResult{
+			{
+				Check:   "source_database_connection",
 				Status:  "fail",
-				Message: "Cannot connect to destination database",
+				Message: fmt.Sprintf("Failed to connect to source database: %s", cfg.Source.Database),
 				Details: err.Error(),
-			})
-		} else {
-			if err := destConn.Close(); err != nil {
-				fmt.Printf("Warning: Failed to close destination connection: %v\n", err)
-			}
-			results = append(results, DoctorResult{
-				Check:   "destination_database",
-				Status:  "pass",
-				Message: "Destination database connection successful",
-				Details: fmt.Sprintf("%s:%d", cfg.Destination.Host, cfg.Destination.Port),
-			})
+			},
+		}
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			doctorLogger.Warnf("Failed to close database connection: %v", err)
+		}
+	}()
+
+	// Check version
+	version, err := conn.GetVersion()
+	if err != nil {
+		return []DoctorResult{
+			{
+				Check:   "source_database_connection",
+				Status:  "fail",
+				Message: "Connected, but failed to get PostgreSQL version.",
+				Details: err.Error(),
+			},
 		}
 	}
 
-	return results
+	return []DoctorResult{
+		{
+			Check:   "source_database_connection",
+			Status:  "pass",
+			Message: fmt.Sprintf("Successfully connected to source database: %s", cfg.Source.Database),
+			Details: fmt.Sprintf("PostgreSQL Version: %s", version),
+		},
+	}
 }
 
 func checkDependencies() []DoctorResult {
 	var results []DoctorResult
+	deps := []string{"psql", "pg_dump", "pg_restore"}
 
-	// Check if postgresql client tools are available (if needed for cross-server operations)
-	// This is more informational since we don't strictly require them
-	results = append(results, DoctorResult{
-		Check:   "postgresql_client",
-		Status:  "pass",
-		Message: "PostgreSQL client tools not required",
-		Details: "postgres-db-fork uses native Go database drivers",
-	})
+	for _, dep := range deps {
+		if _, err := exec.LookPath(dep); err != nil {
+			results = append(results, DoctorResult{
+				Check:   fmt.Sprintf("dependency_%s", dep),
+				Status:  "fail",
+				Message: fmt.Sprintf("Required dependency '%s' not found in PATH.", dep),
+				Details: "This is required for optimized cross-server data transfers.",
+			})
+		} else {
+			results = append(results, DoctorResult{
+				Check:   fmt.Sprintf("dependency_%s", dep),
+				Status:  "pass",
+				Message: fmt.Sprintf("Dependency '%s' found in PATH.", dep),
+			})
+		}
+	}
 
 	return results
 }

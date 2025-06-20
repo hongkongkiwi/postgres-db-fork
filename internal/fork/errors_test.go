@@ -136,7 +136,12 @@ func TestErrorHandler_WrapError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := handler.WrapError(tt.err, tt.message, tt.context)
+			var result error
+			if tt.context != "" {
+				result = handler.WrapErrorWithContext(tt.err, tt.message, tt.context)
+			} else {
+				result = handler.WrapError(tt.err, tt.message)
+			}
 
 			if tt.expectNil {
 				assert.Nil(t, result)
@@ -144,10 +149,12 @@ func TestErrorHandler_WrapError(t *testing.T) {
 			}
 
 			require.NotNil(t, result)
-			assert.Equal(t, tt.expectedType, result.Type)
-			assert.Equal(t, tt.expectedRetry, result.Retryable)
+			forkErr, ok := result.(*ForkError)
+			require.True(t, ok, "Expected ForkError but got %T", result)
+			assert.Equal(t, tt.expectedType, forkErr.Type)
+			assert.Equal(t, tt.expectedRetry, forkErr.Retryable)
 			if tt.context != "" {
-				assert.Equal(t, tt.context, result.Context)
+				assert.Contains(t, forkErr.Context, tt.context)
 			}
 		})
 	}
@@ -375,9 +382,9 @@ func TestErrorHandler_GetErrorSummary(t *testing.T) {
 	handler := NewErrorHandler(DefaultRetryConfig(), "test")
 
 	// Simulate some errors
-	_ = handler.WrapError(errors.New("connection refused"), "msg1", "ctx1")
-	_ = handler.WrapError(errors.New("connection timeout"), "msg2", "ctx2")
-	_ = handler.WrapError(errors.New("permission denied"), "msg3", "ctx3")
+	_ = handler.WrapErrorWithContext(errors.New("connection refused"), "msg1", "ctx1")
+	_ = handler.WrapErrorWithContext(errors.New("connection timeout"), "msg2", "ctx2")
+	_ = handler.WrapErrorWithContext(errors.New("permission denied"), "msg3", "ctx3")
 
 	summary := handler.GetErrorSummary()
 

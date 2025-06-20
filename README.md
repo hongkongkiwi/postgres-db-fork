@@ -21,7 +21,7 @@ curl -L -o postgres-db-fork https://github.com/your-org/postgres-db-fork/release
 chmod +x postgres-db-fork
 
 # Or build from source
-go build -o postgres-db-fork ./cmd/main.go
+go build -o postgres-db-fork main.go
 ```
 
 ### Basic Usage
@@ -144,19 +144,23 @@ This repository can be used directly as a GitHub Action in your workflows:
 
 ```yaml
 - name: Fork database for PR
-  uses: your-org/postgres-db-fork@v1
+  uses: hongkongkiwi/postgres-db-fork@main
   with:
     command: fork
     source-host: ${{ secrets.DB_HOST }}
+    source-port: ${{ secrets.DB_PORT }}
     source-user: ${{ secrets.DB_USER }}
     source-password: ${{ secrets.DB_PASSWORD }}
     source-database: myapp_staging
     dest-host: ${{ secrets.PREVIEW_DB_HOST }}
+    dest-port: ${{ secrets.PREVIEW_DB_PORT }}
     dest-user: ${{ secrets.PREVIEW_DB_USER }}
     dest-password: ${{ secrets.PREVIEW_DB_PASSWORD }}
     target-database: "myapp_pr_{{.PR_NUMBER}}"
     drop-if-exists: true
+    max-connections: 8
     output-format: json
+    quiet: true
   id: fork-db
 
 - name: Get database info
@@ -176,9 +180,12 @@ This repository can be used directly as a GitHub Action in your workflows:
 | `source-user` | Source database username | No | |
 | `source-password` | Source database password | No | |
 | `source-database` | Source database name | No | |
+| `source-sslmode` | Source database SSL mode | No | `prefer` |
 | `dest-host` | Destination database host | No | |
+| `dest-port` | Destination database port | No | `5432` |
 | `dest-user` | Destination database username | No | |
 | `dest-password` | Destination database password | No | |
+| `dest-sslmode` | Destination database SSL mode | No | `prefer` |
 | `target-database` | Target database name (supports templates) | No | |
 | `drop-if-exists` | Drop target database if it exists | No | `false` |
 | `max-connections` | Maximum number of connections | No | `4` |
@@ -223,20 +230,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Create PR preview database
-        uses: your-org/postgres-db-fork@v1
+        uses: hongkongkiwi/postgres-db-fork@main
         with:
           command: fork
           source-host: ${{ secrets.STAGING_DB_HOST }}
+          source-port: ${{ secrets.DB_PORT }}
           source-user: ${{ secrets.DB_USER }}
           source-password: ${{ secrets.DB_PASSWORD }}
           source-database: myapp_staging
           dest-host: ${{ secrets.PREVIEW_DB_HOST }}
+          dest-port: ${{ secrets.PREVIEW_DB_PORT }}
           dest-user: ${{ secrets.PREVIEW_DB_USER }}
           dest-password: ${{ secrets.PREVIEW_DB_PASSWORD }}
           target-database: "myapp_pr_{{.PR_NUMBER}}"
           drop-if-exists: true
           max-connections: 8
           output-format: json
+          quiet: true
         id: fork
 
       - name: Comment on PR
@@ -257,10 +267,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Cleanup PR database
-        uses: your-org/postgres-db-fork@v1
+        uses: hongkongkiwi/postgres-db-fork@main
         with:
           command: cleanup
           host: ${{ secrets.PREVIEW_DB_HOST }}
+          port: ${{ secrets.PREVIEW_DB_PORT }}
           user: ${{ secrets.PREVIEW_DB_USER }}
           password: ${{ secrets.PREVIEW_DB_PASSWORD }}
           pattern: "myapp_pr_${{ github.event.number }}"

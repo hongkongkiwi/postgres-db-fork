@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/sirupsen/logrus"
 )
 
@@ -72,6 +73,7 @@ type ProgressMonitor struct {
 	outputFormat    string
 	quiet           bool
 	progressFile    string
+	progressBar     *progressbar.ProgressBar
 	mu              sync.RWMutex
 	ctx             context.Context
 	cancel          context.CancelFunc
@@ -154,6 +156,25 @@ func (pm *ProgressMonitor) InitializeTables(tableInfo map[string]int64) {
 		pm.overallProgress.RowsTotal += rowCount
 	}
 
+	// Create overall progress bar if not in quiet mode
+	if !pm.quiet && pm.overallProgress.TablesTotal > 0 {
+		pm.progressBar = progressbar.NewOptions(pm.overallProgress.TablesTotal,
+			progressbar.OptionSetDescription("Overall Progress"),
+			progressbar.OptionSetWidth(60),
+			progressbar.OptionShowCount(),
+			progressbar.OptionShowIts(),
+			progressbar.OptionSetTheme(progressbar.Theme{
+				Saucer:        "█",
+				SaucerHead:    "█",
+				SaucerPadding: "░",
+				BarStart:      "╢",
+				BarEnd:        "╟",
+			}),
+			progressbar.OptionEnableColorCodes(true),
+			progressbar.OptionSetPredictTime(true),
+		)
+	}
+
 	if !pm.quiet {
 		logrus.Infof("📋 Preparing to transfer %d tables with %d total rows",
 			pm.overallProgress.TablesTotal, pm.overallProgress.RowsTotal)
@@ -220,6 +241,13 @@ func (pm *ProgressMonitor) CompleteTable(tableName string) {
 		pm.completedTables = append(pm.completedTables, *table)
 		pm.overallProgress.TablesCompleted++
 		pm.currentTable = nil
+
+		// Update overall progress bar
+		if pm.progressBar != nil {
+			if err := pm.progressBar.Add(1); err != nil {
+				logrus.Debugf("Failed to update overall progress bar: %v", err)
+			}
+		}
 
 		if !pm.quiet {
 			logrus.Infof("✅ Completed table: %s (%d rows in %s)",
@@ -397,6 +425,13 @@ func (pm *ProgressMonitor) writeProgressFile() {
 // Close stops the progress monitor
 func (pm *ProgressMonitor) Close() {
 	pm.cancel()
+
+	// Finish progress bar
+	if pm.progressBar != nil {
+		if err := pm.progressBar.Finish(); err != nil {
+			logrus.Debugf("Failed to finish overall progress bar: %v", err)
+		}
+	}
 
 	// Write final progress file
 	if pm.progressFile != "" {

@@ -1,14 +1,17 @@
 //go:build integration
 
-package main
+package main_test
 
 import (
 	"context"
+	"database/sql"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/hongkongkiwi/postgres-db-fork/internal/config"
 	"github.com/hongkongkiwi/postgres-db-fork/internal/fork"
+	"github.com/hongkongkiwi/postgres-db-fork/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,9 +19,10 @@ import (
 
 func TestSameServerFork_Integration(t *testing.T) {
 	// Set up test environment
-	env, cleanup := SetupTestEnvironment(t)
+	env, cleanup := testutil.SetupTestEnvironment(t)
 	if env == nil {
-		return // Test was skipped
+		t.Skip("Skipping integration test")
+		return
 	}
 	defer cleanup()
 
@@ -58,13 +62,13 @@ func TestSameServerFork_Integration(t *testing.T) {
 
 func TestCrossServerFork_Integration(t *testing.T) {
 	// Set up two test environments to simulate cross-server fork
-	sourceEnv, sourceCleanup := SetupTestEnvironment(t)
+	sourceEnv, sourceCleanup := testutil.SetupTestEnvironment(t)
 	if sourceEnv == nil {
 		return // Test was skipped
 	}
 	defer sourceCleanup()
 
-	destEnv, destCleanup := SetupTestEnvironment(t)
+	destEnv, destCleanup := testutil.SetupTestEnvironment(t)
 	if destEnv == nil {
 		return // Test was skipped
 	}
@@ -105,7 +109,7 @@ func TestCrossServerFork_Integration(t *testing.T) {
 }
 
 func TestForkWithTableFiltering_Integration(t *testing.T) {
-	env, cleanup := SetupTestEnvironment(t)
+	env, cleanup := testutil.SetupTestEnvironment(t)
 	if env == nil {
 		return
 	}
@@ -152,7 +156,7 @@ func TestForkWithTableFiltering_Integration(t *testing.T) {
 	}()
 
 	var exists bool
-	err = conn.DB.QueryRow(`
+	err = conn.QueryRow(`
 		SELECT EXISTS (
 			SELECT 1 FROM information_schema.tables
 			WHERE table_schema = 'public' AND table_name = 'temp_logs'
@@ -163,7 +167,7 @@ func TestForkWithTableFiltering_Integration(t *testing.T) {
 }
 
 func TestForkSchemaOnly_Integration(t *testing.T) {
-	env, cleanup := SetupTestEnvironment(t)
+	env, cleanup := testutil.SetupTestEnvironment(t)
 	if env == nil {
 		return
 	}
@@ -197,7 +201,7 @@ func TestForkSchemaOnly_Integration(t *testing.T) {
 }
 
 func TestForkErrorHandling_Integration(t *testing.T) {
-	env, cleanup := SetupTestEnvironment(t)
+	env, cleanup := testutil.SetupTestEnvironment(t)
 	if env == nil {
 		return
 	}
@@ -223,7 +227,7 @@ func TestForkErrorHandling_Integration(t *testing.T) {
 }
 
 func TestForkWithExistingTarget_Integration(t *testing.T) {
-	env, cleanup := SetupTestEnvironment(t)
+	env, cleanup := testutil.SetupTestEnvironment(t)
 	if env == nil {
 		return
 	}
@@ -263,7 +267,7 @@ func TestForkWithExistingTarget_Integration(t *testing.T) {
 }
 
 func TestForkProgress_Integration(t *testing.T) {
-	env, cleanup := SetupTestEnvironment(t)
+	env, cleanup := testutil.SetupTestEnvironment(t)
 	if env == nil {
 		return
 	}
@@ -298,7 +302,7 @@ func TestForkProgress_Integration(t *testing.T) {
 }
 
 func TestForkTimeout_Integration(t *testing.T) {
-	env, cleanup := SetupTestEnvironment(t)
+	env, cleanup := testutil.SetupTestEnvironment(t)
 	if env == nil {
 		return
 	}
@@ -332,4 +336,120 @@ func TestForkTimeout_Integration(t *testing.T) {
 	if err != nil {
 		assert.Contains(t, err.Error(), "context")
 	}
+}
+
+// TestURI_Integration tests URI functionality in integration scenarios
+func TestURI_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration tests in short mode")
+	}
+
+	// This test requires a running PostgreSQL instance
+	// Skip if we can't connect to a test database
+	testConfig := &config.DatabaseConfig{
+		Host:     "localhost",
+		Port:     5432,
+		Username: "postgres",
+		Password: "postgres",
+		Database: "postgres",
+		SSLMode:  "disable",
+	}
+
+	// Try to connect to verify PostgreSQL is available
+	db, err := sql.Open("postgres", testConfig.ConnectionString())
+	if err != nil {
+		t.Skipf("Skipping integration test: PostgreSQL not available: %v", err)
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		t.Skipf("Skipping integration test: PostgreSQL not accessible: %v", err)
+	}
+
+	t.Run("URI connection equivalence", func(t *testing.T) {
+		// Test that URI and individual parameters produce equivalent connections
+		individualConfig := &config.DatabaseConfig{
+			Host:     "localhost",
+			Port:     5432,
+			Username: "postgres",
+			Password: "postgres",
+			Database: "postgres",
+			SSLMode:  "disable",
+		}
+
+		uriConfig := &config.DatabaseConfig{
+			URI: "postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable", // pragma: allowlist secret
+		}
+
+		// Both should connect successfully
+		db1, err := sql.Open("postgres", individualConfig.ConnectionString())
+		require.NoError(t, err)
+		defer db1.Close()
+
+		db2, err := sql.Open("postgres", uriConfig.ConnectionString())
+		require.NoError(t, err)
+		defer db2.Close()
+
+		// Both should be able to ping
+		require.NoError(t, db1.Ping())
+		require.NoError(t, db2.Ping())
+
+		// Both should be able to execute queries
+		var result1, result2 int
+		err = db1.QueryRow("SELECT 1").Scan(&result1)
+		require.NoError(t, err)
+		assert.Equal(t, 1, result1)
+
+		err = db2.QueryRow("SELECT 1").Scan(&result2)
+		require.NoError(t, err)
+		assert.Equal(t, 1, result2)
+	})
+
+	t.Run("environment variable URI support", func(t *testing.T) {
+		// Save original environment
+		originalEnv := map[string]string{
+			"PGFORK_SOURCE_URI":  os.Getenv("PGFORK_SOURCE_URI"),
+			"PGFORK_SOURCE_HOST": os.Getenv("PGFORK_SOURCE_HOST"),
+		}
+
+		defer func() {
+			for key, value := range originalEnv {
+				if value == "" {
+					os.Unsetenv(key)
+				} else {
+					os.Setenv(key, value)
+				}
+			}
+		}()
+
+		// Set URI environment variable
+		testURI := "postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable" // pragma: allowlist secret
+		os.Setenv("PGFORK_SOURCE_URI", testURI)
+		os.Unsetenv("PGFORK_SOURCE_HOST") // Ensure individual params don't interfere
+
+		// Load configuration from environment
+		config := &config.ForkConfig{}
+		config.LoadFromEnvironment()
+
+		// Verify URI was loaded correctly
+		assert.Equal(t, testURI, config.Source.URI)
+		assert.Equal(t, "localhost", config.Source.Host)
+		assert.Equal(t, 5432, config.Source.Port)
+		assert.Equal(t, "postgres", config.Source.Username)
+		assert.Equal(t, "postgres", config.Source.Password)
+		assert.Equal(t, "postgres", config.Source.Database)
+		assert.Equal(t, "disable", config.Source.SSLMode)
+
+		// Verify connection works
+		db, err := sql.Open("postgres", config.Source.ConnectionString())
+		require.NoError(t, err)
+		defer db.Close()
+
+		require.NoError(t, db.Ping())
+
+		var result int
+		err = db.QueryRow("SELECT 1").Scan(&result)
+		require.NoError(t, err)
+		assert.Equal(t, 1, result)
+	})
 }

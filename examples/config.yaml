@@ -1,64 +1,50 @@
 # PostgreSQL Database Fork Configuration
-# This is a comprehensive example showing all available options
+# This is a comprehensive example showing all available options.
+# For a minimal configuration, you only need to specify source, destination, and target_database.
 
 # =====================================
 # SOURCE DATABASE CONFIGURATION
 # =====================================
 source:
-  host: prod.example.com
+  # Option 1: Use a connection URI (takes precedence over individual parameters)
+  # uri: "postgresql://produser:prodpass@prod.example.com:5432/myapp_production?sslmode=require"
+
+  # Option 2: Use individual connection parameters
+  host: "prod.example.com"
   port: 5432
-  username: produser
-  password: prodpass # pragma: allowlist secret
-  database: myapp_production
-  sslmode: require
-
-  # Optional SSL configuration
-  sslcert: /path/to/client.crt
-  sslkey: /path/to/client.key
-  sslrootcert: /path/to/ca.crt
-
-  # Connection settings
-  connect_timeout: 30s
-  application_name: postgres-db-fork
+  username: "produser"
+  password: "prodpassword" # pragma: allowlist secret
+  database: "myapp_production"
+  sslmode: "require"
 
 # =====================================
 # DESTINATION DATABASE CONFIGURATION
 # =====================================
-# If not specified, inherits from source configuration
+# If not specified, inherits from source configuration, but a host is recommended.
 destination:
-  host: dev.example.com
-  port: 5432
-  username: devuser
-  password: devpass # pragma: allowlist secret
-  sslmode: prefer
+  # Option 1: Use a connection URI (takes precedence over individual parameters)
+  # uri: "postgresql://devuser:devpass@dev.example.com:5432/?sslmode=prefer"
 
-  # Destination-specific settings
-  statement_timeout: 0    # Disable statement timeout for large operations
-  max_connections: 100    # Ensure enough connections available
+  # Option 2: Use individual connection parameters
+  host: "dev.example.com"
+  port: 5432
+  username: "devuser"
+  password: "devpassword" # pragma: allowlist secret
+  sslmode: "prefer"
 
 # =====================================
 # TARGET DATABASE CONFIGURATION
 # =====================================
 # Target database name (supports template variables)
-target_database: myapp_development
+target_database: "myapp_pr_{{.PR_NUMBER}}"
 
 # Drop target database if it already exists
 drop_if_exists: true
 
-# Create database with specific settings
-database_options:
-  owner: devuser
-  encoding: UTF8
-  locale: en_US.UTF-8
-  template: template0
-
 # =====================================
 # PERFORMANCE SETTINGS
 # =====================================
-# Number of parallel workers for data transfer
-workers: 4
-
-# Number of parallel connections per worker
+# Number of parallel connections for data transfer
 max_connections: 8
 
 # Number of rows to transfer in each batch
@@ -67,51 +53,18 @@ chunk_size: 5000
 # Maximum time for the entire operation
 timeout: 60m
 
-# Memory usage optimization
-memory_limit: 1GB
-work_mem: 256MB
-
-# Parallel processing options
-parallel_mode: true        # Enable parallel table transfers
-disable_triggers: true     # Disable triggers during transfer for speed
-vacuum_analyze: false      # Run VACUUM ANALYZE after transfer
-
 # =====================================
 # DATA FILTERING
 # =====================================
+# Transfer only specific tables
+# include_tables:
+#   - "users"
+#   - "products"
+
 # Exclude specific tables from transfer
 exclude_tables:
-  - audit_logs             # Large audit tables
-  - session_data           # Temporary session data
-  - user_sessions          # User session storage
-  - temp_*                 # All tables starting with 'temp_'
-  - cache_*                # All cache tables
-  - logs_*                 # All log tables
-
-# Alternative: only include specific tables
-# include_tables:
-#   - users
-#   - products
-#   - orders
-#   - customers
-#   - categories
-
-# Schema filtering
-include_schemas:
-  - public
-  - api
-  - core
-
-exclude_schemas:
-  - analytics
-  - reporting
-  - archive
-
-# Custom data filtering with WHERE clauses
-data_filters:
-  users: "active = true AND created_at > NOW() - INTERVAL '2 years'"
-  orders: "status != 'cancelled' AND order_date > NOW() - INTERVAL '1 year'"
-  products: "discontinued = false"
+  - "audit_logs"
+  - "session_data"
 
 # =====================================
 # TRANSFER MODE OPTIONS
@@ -122,138 +75,48 @@ schema_only: false
 # Transfer only data, no schema (schema must exist)
 data_only: false
 
-# Include schema in data mode
-include_schema: true
-
-# Copy table structure only (no data or constraints)
-structure_only: false
-
-# =====================================
-# ADVANCED OPTIONS
-# =====================================
-# Handle large objects (BLOBs)
-include_large_objects: true
-
-# Handle sequences
-reset_sequences: true
-
-# Handle foreign key constraints
-defer_constraints: true
-
-# Transaction mode
-use_transactions: true
-transaction_size: 10000     # Commit every N rows
-
-# Error handling
-continue_on_error: false
-max_retries: 3
-retry_delay: 5s
-
 # =====================================
 # OUTPUT & LOGGING
 # =====================================
 # Logging configuration
-log_level: info             # debug, info, warn, error
-verbose: false
+log_level: "info" # debug, info, warn, error
+
+# Suppress all output except for the final result
 quiet: false
 
-# Progress reporting
-show_progress: true
-progress_interval: 30s
+# Output format for CI/CD
+output_format: "text" # text, json
 
-# Output format
-output_format: text         # text, json, yaml
-structured_logging: false
-
-# File output
-log_file: /var/log/postgres-fork.log
-error_file: /var/log/postgres-fork-errors.log
-
-# =====================================
-# MONITORING & METRICS
-# =====================================
-# Enable metrics collection
-enable_metrics: false
-metrics_port: 9090
-
-# Performance monitoring
-track_performance: true
-track_memory_usage: true
-
-# =====================================
-# SECURITY OPTIONS
-# =====================================
-# Sensitive data handling
-mask_sensitive_data: false
-sensitive_columns:
-  - password
-  - credit_card
-  - ssn
-  - email
-
-# Audit logging
-enable_audit_log: false
-audit_operations:
-  - CREATE
-  - DROP
-  - TRUNCATE
-
-# =====================================
-# VALIDATION SETTINGS
-# =====================================
-# Pre-transfer validation
-validate_source: true
-validate_destination: true
-check_permissions: true
-check_disk_space: true
-
-# Post-transfer validation
-validate_transfer: true
-check_row_counts: true
-verify_data_integrity: false   # Enable for critical transfers
-checksum_validation: false     # Compute and verify checksums
+# Perform a dry run without making any changes
+dry_run: false
 
 # =====================================
 # TEMPLATE VARIABLES
 # =====================================
 # Define custom variables for use in target_database name
 template_vars:
-  app_name: myapp
-  environment: development
-  version: v1.0.0
-  date: "{{ .DATE }}"
-  timestamp: "{{ .TIMESTAMP }}"
-
-# Example using variables:
-# target_database: "{{ .app_name }}_{{ .environment }}_{{ .date }}"
+  APP_NAME: "myapp"
+  ENVIRONMENT: "preview"
+  # Example using variables:
+  # target_database: "{{.APP_NAME}}_{{.ENVIRONMENT}}_{{.PR_NUMBER}}"
 
 # =====================================
 # HOOKS & CALLBACKS
 # =====================================
-# Execute custom scripts at various stages
+# Execute custom shell commands at various stages of the fork process.
+# These are executed in the shell where the fork tool is run.
 hooks:
-  pre_fork: /scripts/pre-fork.sh
-  post_fork: /scripts/post-fork.sh
-  on_error: /scripts/error-handler.sh
+  # Commands to run before the fork operation begins.
+  pre_fork:
+    - "echo 'Starting fork process...'"
+    - "df -h"
 
-# SQL commands to execute
-pre_sql:
-  - "SET statement_timeout = 0;"
-  - "SET lock_timeout = 0;"
+  # Commands to run after a successful fork operation.
+  post_fork:
+    - "echo 'Fork completed successfully!'"
+    - "./notify-slack.sh 'Database {{.TARGET_DATABASE}} is ready!'"
 
-post_sql:
-  - "ANALYZE;"
-  - "VACUUM;"
-
-# =====================================
-# BACKUP & RECOVERY
-# =====================================
-# Create backup before operations
-create_backup: false
-backup_location: /backups/
-backup_format: custom       # plain, custom, directory, tar
-backup_compression: 9       # 0-9, 0=none, 9=best
-
-# Point-in-time recovery
-enable_pitr: false
-wal_archive_mode: off
+  # Commands to run if the fork operation fails.
+  on_error:
+    - "echo 'Fork failed. See logs for details.'"
+    - "./alert-pagerduty.sh 'Fork of {{.SOURCE_DATABASE}} failed!'"

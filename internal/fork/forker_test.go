@@ -3,6 +3,7 @@ package fork
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/hongkongkiwi/postgres-db-fork/internal/config"
 
@@ -35,12 +36,15 @@ func TestForker_Fork_ValidationError(t *testing.T) {
 	cfg := &config.ForkConfig{
 		// Missing required fields
 	}
+	cfg.Source.SSLMode = "disable"
+	cfg.Destination.SSLMode = "disable"
 
 	forker := NewForker(cfg)
 	err := forker.Fork(context.Background())
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid configuration")
+	require.Error(t, err)
+	// The validation is now part of the config object, so we check for its error
+	assert.Contains(t, cfg.Validate().Error(), "validation failed")
 }
 
 func TestForker_IsSameServerDetection(t *testing.T) {
@@ -159,8 +163,14 @@ func TestForker_ConfigValidation(t *testing.T) {
 					Host:     "localhost",
 					Port:     5432,
 					Username: "user",
+					Database: "destdb",
 				},
 				TargetDatabase: "targetdb",
+				MaxConnections: 4,
+				ChunkSize:      1000,
+				Timeout:        30 * time.Minute,
+				OutputFormat:   "text",
+				LogLevel:       "info",
 			},
 			expectError: false,
 		},
@@ -177,8 +187,14 @@ func TestForker_ConfigValidation(t *testing.T) {
 					Host:     "dest.example.com",
 					Port:     5432,
 					Username: "user",
+					Database: "destdb",
 				},
 				TargetDatabase: "targetdb",
+				MaxConnections: 4,
+				ChunkSize:      1000,
+				Timeout:        30 * time.Minute,
+				OutputFormat:   "text",
+				LogLevel:       "info",
 			},
 			expectError: false,
 		},
@@ -189,11 +205,13 @@ func TestForker_ConfigValidation(t *testing.T) {
 					Host:     "localhost",
 					Port:     5432,
 					Username: "user",
+					SSLMode:  "disable",
 				},
 				Destination: config.DatabaseConfig{
 					Host:     "localhost",
 					Port:     5432,
 					Username: "user",
+					SSLMode:  "disable",
 				},
 				TargetDatabase: "targetdb",
 			},
@@ -207,11 +225,13 @@ func TestForker_ConfigValidation(t *testing.T) {
 					Port:     5432,
 					Username: "user",
 					Database: "sourcedb",
+					SSLMode:  "disable",
 				},
 				Destination: config.DatabaseConfig{
 					Host:     "localhost",
 					Port:     5432,
 					Username: "user",
+					SSLMode:  "disable",
 				},
 			},
 			expectError: true,
@@ -220,19 +240,22 @@ func TestForker_ConfigValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Pre-validate the config to check for expected errors
+			if tt.expectError {
+				err := tt.config.Validate()
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "validation failed")
+				return // End test here for expected validation errors
+			}
+
 			forker := NewForker(tt.config)
 			err := forker.Fork(context.Background())
 
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "invalid configuration")
-			} else {
-				// For valid configs, we expect connection errors since we don't have actual DBs
-				// The important thing is that validation passes
-				if err != nil {
-					// Should be a connection error, not a validation error
-					assert.NotContains(t, err.Error(), "invalid configuration")
-				}
+			// For valid configs, we expect connection errors since we don't have actual DBs
+			// The important thing is that validation passes
+			if err != nil {
+				// Should be a connection error, not a validation error
+				assert.NotContains(t, err.Error(), "validation failed")
 			}
 		})
 	}

@@ -170,6 +170,16 @@ func (c *Connection) GetDatabaseSize(dbName string) (int64, error) {
 	return size, err
 }
 
+// GetVersion returns the PostgreSQL server version string
+func (c *Connection) GetVersion() (string, error) {
+	var version string
+	err := c.DB.QueryRow("SHOW server_version").Scan(&version)
+	if err != nil {
+		return "", fmt.Errorf("failed to get server version: %w", err)
+	}
+	return version, nil
+}
+
 // GetTableList returns a list of tables in the database
 func (c *Connection) GetTableList(schemaName string) ([]string, error) {
 	if schemaName == "" {

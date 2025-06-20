@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Create PR preview database
-        uses: your-org/postgres-db-fork@v1
+        uses: hongkongkiwi/postgres-db-fork@main
         with:
           command: fork
           source-host: ${{ secrets.STAGING_DB_HOST }}
@@ -39,7 +39,7 @@ jobs:
         id: fork-db
 
       - name: Validate database creation
-        uses: your-org/postgres-db-fork@v1
+        uses: hongkongkiwi/postgres-db-fork@main
         with:
           command: validate
           dest-host: ${{ secrets.PREVIEW_DB_HOST }}
@@ -157,7 +157,7 @@ jobs:
 
     steps:
       - name: Cleanup PR database
-        uses: your-org/postgres-db-fork@v1
+        uses: hongkongkiwi/postgres-db-fork@main
         with:
           command: cleanup
           host: ${{ secrets.PREVIEW_DB_HOST }}
@@ -191,7 +191,7 @@ jobs:
 
     steps:
       - name: List databases before cleanup
-        uses: your-org/postgres-db-fork@v1
+        uses: hongkongkiwi/postgres-db-fork@main
         with:
           command: list
           host: ${{ secrets.PREVIEW_DB_HOST }}
@@ -204,7 +204,7 @@ jobs:
         id: list-old
 
       - name: Cleanup old PR databases
-        uses: your-org/postgres-db-fork@v1
+        uses: hongkongkiwi/postgres-db-fork@main
         with:
           command: cleanup
           host: ${{ secrets.PREVIEW_DB_HOST }}
@@ -229,7 +229,7 @@ jobs:
 
     steps:
       - name: Validate source database connection
-        uses: your-org/postgres-db-fork@v1
+        uses: hongkongkiwi/postgres-db-fork@main
         with:
           command: validate
           source-host: ${{ secrets.STAGING_DB_HOST }}
@@ -240,7 +240,7 @@ jobs:
           output-format: json
 
       - name: Validate destination server
-        uses: your-org/postgres-db-fork@v1
+        uses: hongkongkiwi/postgres-db-fork@main
         with:
           command: validate
           dest-host: ${{ secrets.PREVIEW_DB_HOST }}
@@ -258,7 +258,7 @@ jobs:
 
     steps:
       - name: Large database fork test
-        uses: your-org/postgres-db-fork@v1
+        uses: hongkongkiwi/postgres-db-fork@main
         with:
           command: fork
           source-host: ${{ secrets.STAGING_DB_HOST }}

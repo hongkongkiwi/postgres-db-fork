@@ -5,7 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/lib/pq"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -42,6 +44,7 @@ type ForkError struct {
 	Retryable   bool          `json:"retryable"`
 	RetryAfter  time.Duration `json:"retry_after,omitempty"`
 	OriginalErr error         `json:"-"`
+	Cause       error         `json:"cause,omitempty"`
 }
 
 // Error implements the error interface
@@ -99,59 +102,127 @@ func NewErrorHandler(config RetryConfig, context string) *ErrorHandler {
 	}
 }
 
-// WrapError wraps an error with additional context and classification
-func (eh *ErrorHandler) WrapError(err error, message string, context string) *ForkError {
+// WrapError wraps an error with additional context and stack trace
+func (eh *ErrorHandler) WrapError(err error, message string) error {
 	if err == nil {
 		return nil
 	}
 
-	// If it's already a ForkError, just add context
+	// If it's already a ForkError, just wrap it
 	if fe, ok := err.(*ForkError); ok {
-		if context != "" {
-			fe.Context = context
+		wrappedErr := errors.Wrap(err, message)
+		return &ForkError{
+			Type:        fe.Type,
+			Severity:    fe.Severity,
+			Message:     fmt.Sprintf("%s: %s", message, fe.Message),
+			Details:     fe.Details,
+			Context:     fe.Context,
+			Timestamp:   time.Now(),
+			Retryable:   fe.Retryable,
+			RetryAfter:  fe.RetryAfter,
+			OriginalErr: fe.OriginalErr,
+			Cause:       wrappedErr,
 		}
-		return fe
 	}
 
 	// Classify the error
 	errorType, severity, retryable, retryAfter := eh.classifyError(err)
-
 	eh.errorCount[errorType]++
 
-	forkError := &ForkError{
+	// Wrap with pkg/errors for stack trace
+	wrappedErr := errors.Wrap(err, message)
+
+	return &ForkError{
 		Type:        errorType,
 		Severity:    severity,
 		Message:     message,
 		Details:     err.Error(),
-		Context:     context,
+		Context:     eh.context,
 		Timestamp:   time.Now(),
 		Retryable:   retryable,
 		RetryAfter:  retryAfter,
 		OriginalErr: err,
+		Cause:       wrappedErr,
+	}
+}
+
+// WrapErrorWithContext wraps an error with additional context string
+func (eh *ErrorHandler) WrapErrorWithContext(err error, message string, context string) error {
+	if err == nil {
+		return nil
 	}
 
-	// Log the error with appropriate level
-	switch severity {
-	case SeverityFatal:
-		eh.logger.WithFields(logrus.Fields{
-			"error_type": errorType,
-			"context":    context,
-			"details":    err.Error(),
-		}).Error(message)
-	case SeverityRetryable:
-		eh.logger.WithFields(logrus.Fields{
-			"error_type":  errorType,
-			"context":     context,
-			"retry_after": retryAfter,
-		}).Warn(message)
-	case SeverityWarning:
-		eh.logger.WithFields(logrus.Fields{
-			"error_type": errorType,
-			"context":    context,
-		}).Debug(message)
+	// If it's already a ForkError, just wrap it
+	if fe, ok := err.(*ForkError); ok {
+		wrappedErr := errors.Wrap(err, message)
+		contextStr := fe.Context
+		if context != "" {
+			if contextStr != "" {
+				contextStr = fmt.Sprintf("%s; %s", contextStr, context)
+			} else {
+				contextStr = context
+			}
+		}
+
+		return &ForkError{
+			Type:        fe.Type,
+			Severity:    fe.Severity,
+			Message:     fmt.Sprintf("%s: %s", message, fe.Message),
+			Details:     fe.Details,
+			Context:     contextStr,
+			Timestamp:   time.Now(),
+			Retryable:   fe.Retryable,
+			RetryAfter:  fe.RetryAfter,
+			OriginalErr: fe.OriginalErr,
+			Cause:       wrappedErr,
+		}
 	}
 
-	return forkError
+	// Classify the error
+	errorType, severity, retryable, retryAfter := eh.classifyError(err)
+	eh.errorCount[errorType]++
+
+	// Wrap with pkg/errors for stack trace
+	wrappedErr := errors.Wrap(err, message)
+
+	contextStr := eh.context
+	if context != "" {
+		if contextStr != "" {
+			contextStr = fmt.Sprintf("%s; %s", contextStr, context)
+		} else {
+			contextStr = context
+		}
+	}
+
+	return &ForkError{
+		Type:        errorType,
+		Severity:    severity,
+		Message:     message,
+		Details:     err.Error(),
+		Context:     contextStr,
+		Timestamp:   time.Now(),
+		Retryable:   retryable,
+		RetryAfter:  retryAfter,
+		OriginalErr: err,
+		Cause:       wrappedErr,
+	}
+}
+
+// GetRootCause extracts the root cause from a wrapped error
+func GetRootCause(err error) error {
+	return errors.Cause(err)
+}
+
+// GetStackTrace extracts stack trace from error if available
+func GetStackTrace(err error) string {
+	type stackTracer interface {
+		StackTrace() errors.StackTrace
+	}
+
+	if st, ok := err.(stackTracer); ok {
+		return fmt.Sprintf("%+v", st.StackTrace())
+	}
+	return ""
 }
 
 // classifyError determines the error type, severity, and retry characteristics
@@ -293,7 +364,7 @@ func (eh *ErrorHandler) RetryWithBackoff(operation func() error, operationName s
 		}
 
 		// Wrap error if needed
-		forkErr := eh.WrapError(err, fmt.Sprintf("Operation '%s' failed", operationName), eh.context)
+		forkErr := eh.WrapError(err, fmt.Sprintf("Operation '%s' failed", operationName))
 		lastErr = forkErr
 
 		// Check if we should retry
@@ -309,7 +380,7 @@ func (eh *ErrorHandler) RetryWithBackoff(operation func() error, operationName s
 		}
 	}
 
-	return eh.WrapError(lastErr, fmt.Sprintf("Operation '%s' failed after %d attempts", operationName, eh.config.MaxAttempts), eh.context)
+	return eh.WrapError(lastErr, fmt.Sprintf("Operation '%s' failed after %d attempts", operationName, eh.config.MaxAttempts))
 }
 
 // GetErrorSummary returns a summary of errors encountered
@@ -355,4 +426,165 @@ func WarningError(errorType ErrorType, message string, details string) *ForkErro
 		Timestamp: time.Now(),
 		Retryable: false,
 	}
+}
+
+// RetryWithExponentialBackoff retries an operation with exponential backoff
+func (eh *ErrorHandler) RetryWithExponentialBackoff(operation func() error, operationName string) error {
+	// Create exponential backoff configuration
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = eh.config.InitialDelay
+	b.MaxInterval = eh.config.MaxDelay
+	b.Multiplier = eh.config.BackoffFactor
+	b.MaxElapsedTime = time.Duration(eh.config.MaxAttempts) * eh.config.MaxDelay
+
+	// Add jitter to prevent thundering herd
+	b.RandomizationFactor = 0.1
+
+	var lastErr error
+	attempt := 0
+
+	retryableOperation := func() error {
+		attempt++
+
+		eh.logger.WithFields(logrus.Fields{
+			"operation": operationName,
+			"attempt":   attempt,
+			"context":   eh.context,
+		}).Debug("Attempting operation")
+
+		err := operation()
+		if err == nil {
+			return nil
+		}
+
+		// Wrap the error for better context
+		wrappedErr := eh.WrapError(err, fmt.Sprintf("Operation '%s' failed on attempt %d", operationName, attempt))
+		lastErr = wrappedErr
+
+		// Check if error is retryable
+		if forkErr, ok := wrappedErr.(*ForkError); ok {
+			if !forkErr.Retryable {
+				// Non-retryable error - stop immediately
+				return backoff.Permanent(wrappedErr)
+			}
+
+			// Log retryable error
+			eh.logger.WithFields(logrus.Fields{
+				"operation":   operationName,
+				"attempt":     attempt,
+				"error_type":  forkErr.Type,
+				"retry_after": forkErr.RetryAfter,
+			}).Warn("Operation failed, will retry")
+
+			return wrappedErr
+		}
+
+		// Unknown error type - treat as retryable but log warning
+		eh.logger.WithFields(logrus.Fields{
+			"operation": operationName,
+			"attempt":   attempt,
+			"error":     err.Error(),
+		}).Warn("Unknown error type, treating as retryable")
+
+		return wrappedErr
+	}
+
+	// Execute with retry
+	if err := backoff.Retry(retryableOperation, b); err != nil {
+		// Final failure after all retries
+		finalErr := eh.WrapError(lastErr, fmt.Sprintf("Operation '%s' failed after %d attempts", operationName, attempt))
+
+		eh.logger.WithFields(logrus.Fields{
+			"operation":      operationName,
+			"total_attempts": attempt,
+			"final_error":    err.Error(),
+		}).Error("Operation failed permanently")
+
+		return finalErr
+	}
+
+	// Success
+	eh.logger.WithFields(logrus.Fields{
+		"operation": operationName,
+		"attempts":  attempt,
+	}).Info("Operation succeeded")
+
+	return nil
+}
+
+// RetryWithCircuitBreaker implements circuit breaker pattern for database operations
+func (eh *ErrorHandler) RetryWithCircuitBreaker(operation func() error, operationName string) error {
+	// Simple circuit breaker implementation
+	const (
+		circuitBreakerThreshold = 5                // Number of consecutive failures before opening
+		circuitBreakerTimeout   = 30 * time.Second // Time to wait before trying again
+	)
+
+	// This is a simplified implementation - in production you might want to use
+	// a more sophisticated circuit breaker library like github.com/sony/gobreaker
+
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = eh.config.InitialDelay
+	b.MaxInterval = eh.config.MaxDelay
+	b.Multiplier = eh.config.BackoffFactor
+	b.MaxElapsedTime = circuitBreakerTimeout
+
+	consecutiveFailures := 0
+	var lastErr error
+
+	retryableOperation := func() error {
+		err := operation()
+		if err == nil {
+			consecutiveFailures = 0 // Reset on success
+			return nil
+		}
+
+		consecutiveFailures++
+		lastErr = eh.WrapError(err, fmt.Sprintf("Circuit breaker: %s", operationName))
+
+		// Check if we should open the circuit
+		if consecutiveFailures >= circuitBreakerThreshold {
+			eh.logger.WithFields(logrus.Fields{
+				"operation":            operationName,
+				"consecutive_failures": consecutiveFailures,
+				"threshold":            circuitBreakerThreshold,
+			}).Error("Circuit breaker opened - too many consecutive failures")
+
+			return backoff.Permanent(eh.WrapError(lastErr, "Circuit breaker opened"))
+		}
+
+		return lastErr
+	}
+
+	return backoff.Retry(retryableOperation, b)
+}
+
+// RetryWithCustomBackoff allows for custom backoff strategies
+func (eh *ErrorHandler) RetryWithCustomBackoff(operation func() error, operationName string, backoffStrategy backoff.BackOff) error {
+	var lastErr error
+	attempt := 0
+
+	retryableOperation := func() error {
+		attempt++
+		err := operation()
+		if err == nil {
+			return nil
+		}
+
+		wrappedErr := eh.WrapError(err, fmt.Sprintf("%s (attempt %d)", operationName, attempt))
+		lastErr = wrappedErr
+
+		// Check if error is retryable
+		if forkErr, ok := wrappedErr.(*ForkError); ok && !forkErr.Retryable {
+			return backoff.Permanent(wrappedErr)
+		}
+
+		return wrappedErr
+	}
+
+	if err := backoff.Retry(retryableOperation, backoffStrategy); err != nil {
+		return eh.WrapError(lastErr, fmt.Sprintf("%s failed permanently after %d attempts", operationName, attempt))
+	}
+
+	return nil
 }

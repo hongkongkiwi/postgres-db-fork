@@ -116,13 +116,8 @@ func init() {
 	// Interactive mode
 	forkCmd.Flags().Bool("interactive", false, "Run in interactive mode to be prompted for configuration")
 
-	// Mark required flags
-	if err := forkCmd.MarkFlagRequired("source-db"); err != nil {
-		panic(fmt.Sprintf("Failed to mark flag as required: %v", err))
-	}
-	if err := forkCmd.MarkFlagRequired("target-db"); err != nil {
-		panic(fmt.Sprintf("Failed to mark flag as required: %v", err))
-	}
+	// Note: source-db and target-db are required, but we check this after loading env vars
+	// to allow them to be provided via environment variables
 
 	// Bind flags to viper
 	bindFlag("source.host", forkCmd.Flags().Lookup("source-host"))
@@ -178,6 +173,23 @@ func runFork(cmd *cobra.Command, args []string) error {
 	} else {
 		// Load from environment if not interactive
 		cfg.LoadFromEnvironment()
+	}
+
+	// Set default values for required fields that might not be set
+	if cfg.ChunkSize == 0 {
+		cfg.ChunkSize = 1000 // Default chunk size
+	}
+	if cfg.MaxConnections == 0 {
+		cfg.MaxConnections = 4 // Default max connections
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 30 * time.Minute // Default timeout
+	}
+	if cfg.OutputFormat == "" {
+		cfg.OutputFormat = "text" // Default output format
+	}
+	if cfg.LogLevel == "" {
+		cfg.LogLevel = "info" // Default log level
 	}
 
 	// Override with flag values
@@ -241,17 +253,29 @@ func runFork(cmd *cobra.Command, args []string) error {
 	if cmd.Flag("target-db").Changed || cfg.TargetDatabase == "" {
 		cfg.TargetDatabase = viper.GetString("target_database")
 	}
+
+	// Ensure destination database is set to the target database
+	// This is required for validation but will be overridden during the fork process
+	if cfg.Destination.Database == "" {
+		cfg.Destination.Database = cfg.TargetDatabase
+	}
 	if cmd.Flag("drop-if-exists").Changed {
 		cfg.DropIfExists = viper.GetBool("drop_if_exists")
 	}
-	if cmd.Flag("max-connections").Changed {
-		cfg.MaxConnections = viper.GetInt("max_connections")
+	if cmd.Flag("max-connections").Changed || cfg.MaxConnections == 0 {
+		if flagValue := viper.GetInt("max_connections"); flagValue > 0 {
+			cfg.MaxConnections = flagValue
+		}
 	}
-	if cmd.Flag("chunk-size").Changed {
-		cfg.ChunkSize = viper.GetInt("chunk_size")
+	if cmd.Flag("chunk-size").Changed || cfg.ChunkSize == 0 {
+		if flagValue := viper.GetInt("chunk_size"); flagValue > 0 {
+			cfg.ChunkSize = flagValue
+		}
 	}
-	if cmd.Flag("timeout").Changed {
-		cfg.Timeout = viper.GetDuration("timeout")
+	if cmd.Flag("timeout").Changed || cfg.Timeout == 0 {
+		if flagValue := viper.GetDuration("timeout"); flagValue > 0 {
+			cfg.Timeout = flagValue
+		}
 	}
 	if cmd.Flag("exclude-tables").Changed {
 		cfg.ExcludeTables = viper.GetStringSlice("exclude_tables")
@@ -267,8 +291,10 @@ func runFork(cmd *cobra.Command, args []string) error {
 	}
 
 	// CI/CD configuration
-	if cmd.Flag("output-format").Changed {
-		cfg.OutputFormat = viper.GetString("output_format")
+	if cmd.Flag("output-format").Changed || cfg.OutputFormat == "" {
+		if flagValue := viper.GetString("output_format"); flagValue != "" {
+			cfg.OutputFormat = flagValue
+		}
 	}
 	if cmd.Flag("quiet").Changed {
 		cfg.Quiet = viper.GetBool("quiet")
@@ -284,6 +310,14 @@ func runFork(cmd *cobra.Command, args []string) error {
 		for k, v := range templateVars {
 			cfg.TemplateVars[k] = v
 		}
+	}
+
+	// Check required fields that might be provided via environment variables
+	if cfg.Source.Database == "" {
+		return outputResult(cfg, false, "", "Source database is required (use --source-db flag or PGFORK_SOURCE_DATABASE environment variable)", time.Since(start))
+	}
+	if cfg.TargetDatabase == "" {
+		return outputResult(cfg, false, "", "Target database is required (use --target-db flag or PGFORK_TARGET_DATABASE environment variable)", time.Since(start))
 	}
 
 	// Process templates in configuration

@@ -171,145 +171,8 @@ func runFork(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	} else {
-		// Load from environment if not interactive
-		cfg.LoadFromEnvironment()
-	}
-
-	// Set default values for required fields that might not be set
-	if cfg.ChunkSize == 0 {
-		cfg.ChunkSize = 1000 // Default chunk size
-	}
-	if cfg.MaxConnections == 0 {
-		cfg.MaxConnections = 4 // Default max connections
-	}
-	if cfg.Timeout == 0 {
-		cfg.Timeout = 30 * time.Minute // Default timeout
-	}
-	if cfg.OutputFormat == "" {
-		cfg.OutputFormat = "text" // Default output format
-	}
-	if cfg.LogLevel == "" {
-		cfg.LogLevel = "info" // Default log level
-	}
-
-	// Override with flag values
-	// Source configuration
-	if cmd.Flag("source-host").Changed || cfg.Source.Host == "" {
-		cfg.Source.Host = viper.GetString("source.host")
-	}
-	if cmd.Flag("source-port").Changed || cfg.Source.Port == 0 {
-		cfg.Source.Port = viper.GetInt("source.port")
-	}
-	if cmd.Flag("source-user").Changed || cfg.Source.Username == "" {
-		cfg.Source.Username = viper.GetString("source.username")
-	}
-	if cmd.Flag("source-password").Changed || cfg.Source.Password == "" {
-		cfg.Source.Password = viper.GetString("source.password")
-	}
-	if cmd.Flag("source-db").Changed || cfg.Source.Database == "" {
-		cfg.Source.Database = viper.GetString("source.database")
-	}
-	if cmd.Flag("source-sslmode").Changed || cfg.Source.SSLMode == "" {
-		cfg.Source.SSLMode = viper.GetString("source.sslmode")
-	}
-
-	// Destination configuration - default to source values if not specified
-	if cmd.Flag("dest-host").Changed || cfg.Destination.Host == "" {
-		cfg.Destination.Host = viper.GetString("destination.host")
-		if cfg.Destination.Host == "" {
-			cfg.Destination.Host = cfg.Source.Host
-		}
-	}
-
-	if cmd.Flag("dest-port").Changed || cfg.Destination.Port == 0 {
-		cfg.Destination.Port = viper.GetInt("destination.port")
-		if cfg.Destination.Port == 0 {
-			cfg.Destination.Port = cfg.Source.Port
-		}
-	}
-
-	if cmd.Flag("dest-user").Changed || cfg.Destination.Username == "" {
-		cfg.Destination.Username = viper.GetString("destination.username")
-		if cfg.Destination.Username == "" {
-			cfg.Destination.Username = cfg.Source.Username
-		}
-	}
-
-	if cmd.Flag("dest-password").Changed || cfg.Destination.Password == "" {
-		cfg.Destination.Password = viper.GetString("destination.password")
-		if cfg.Destination.Password == "" {
-			cfg.Destination.Password = cfg.Source.Password
-		}
-	}
-
-	if cmd.Flag("dest-sslmode").Changed || cfg.Destination.SSLMode == "" {
-		cfg.Destination.SSLMode = viper.GetString("destination.sslmode")
-		if cfg.Destination.SSLMode == "" {
-			cfg.Destination.SSLMode = cfg.Source.SSLMode
-		}
-	}
-
-	// Other configuration
-	if cmd.Flag("target-db").Changed || cfg.TargetDatabase == "" {
-		cfg.TargetDatabase = viper.GetString("target_database")
-	}
-
-	// Ensure destination database is set to the target database
-	// This is required for validation but will be overridden during the fork process
-	if cfg.Destination.Database == "" {
-		cfg.Destination.Database = cfg.TargetDatabase
-	}
-	if cmd.Flag("drop-if-exists").Changed {
-		cfg.DropIfExists = viper.GetBool("drop_if_exists")
-	}
-	if cmd.Flag("max-connections").Changed || cfg.MaxConnections == 0 {
-		if flagValue := viper.GetInt("max_connections"); flagValue > 0 {
-			cfg.MaxConnections = flagValue
-		}
-	}
-	if cmd.Flag("chunk-size").Changed || cfg.ChunkSize == 0 {
-		if flagValue := viper.GetInt("chunk_size"); flagValue > 0 {
-			cfg.ChunkSize = flagValue
-		}
-	}
-	if cmd.Flag("timeout").Changed || cfg.Timeout == 0 {
-		if flagValue := viper.GetDuration("timeout"); flagValue > 0 {
-			cfg.Timeout = flagValue
-		}
-	}
-	if cmd.Flag("exclude-tables").Changed {
-		cfg.ExcludeTables = viper.GetStringSlice("exclude_tables")
-	}
-	if cmd.Flag("include-tables").Changed {
-		cfg.IncludeTables = viper.GetStringSlice("include_tables")
-	}
-	if cmd.Flag("schema-only").Changed {
-		cfg.SchemaOnly = viper.GetBool("schema_only")
-	}
-	if cmd.Flag("data-only").Changed {
-		cfg.DataOnly = viper.GetBool("data_only")
-	}
-
-	// CI/CD configuration
-	if cmd.Flag("output-format").Changed || cfg.OutputFormat == "" {
-		if flagValue := viper.GetString("output_format"); flagValue != "" {
-			cfg.OutputFormat = flagValue
-		}
-	}
-	if cmd.Flag("quiet").Changed {
-		cfg.Quiet = viper.GetBool("quiet")
-	}
-	if cmd.Flag("dry-run").Changed {
-		cfg.DryRun = viper.GetBool("dry_run")
-	}
-	if cmd.Flag("template-var").Changed {
-		templateVars := viper.GetStringMapString("template_vars")
-		if cfg.TemplateVars == nil {
-			cfg.TemplateVars = make(map[string]string)
-		}
-		for k, v := range templateVars {
-			cfg.TemplateVars[k] = v
-		}
+		// Load configuration following precedence: Flags > Environment Variables > Defaults
+		cfg = loadConfiguration(cmd)
 	}
 
 	// Check required fields that might be provided via environment variables
@@ -361,6 +224,161 @@ func runFork(cmd *cobra.Command, args []string) error {
 	}
 
 	return outputResult(cfg, true, "Database fork completed successfully", "", duration)
+}
+
+// loadConfiguration loads configuration with proper precedence: Flags > Environment Variables > Defaults
+func loadConfiguration(cmd *cobra.Command) *config.ForkConfig {
+	cfg := &config.ForkConfig{}
+
+	// First, load from environment variables
+	cfg.LoadFromEnvironment()
+
+	// Override with flag values if they were explicitly set
+	// Source configuration
+	if cmd.Flag("source-host").Changed {
+		cfg.Source.Host = viper.GetString("source.host")
+	} else if cfg.Source.Host == "" {
+		cfg.Source.Host = "localhost"
+	}
+
+	if cmd.Flag("source-port").Changed {
+		cfg.Source.Port = viper.GetInt("source.port")
+	} else if cfg.Source.Port == 0 {
+		cfg.Source.Port = 5432
+	}
+
+	if cmd.Flag("source-user").Changed {
+		cfg.Source.Username = viper.GetString("source.username")
+	}
+
+	if cmd.Flag("source-password").Changed {
+		cfg.Source.Password = viper.GetString("source.password")
+	}
+
+	if cmd.Flag("source-db").Changed {
+		cfg.Source.Database = viper.GetString("source.database")
+	}
+
+	if cmd.Flag("source-sslmode").Changed {
+		cfg.Source.SSLMode = viper.GetString("source.sslmode")
+	} else if cfg.Source.SSLMode == "" {
+		cfg.Source.SSLMode = "prefer"
+	}
+
+	// Destination configuration - defaults to source values if not specified
+	if cmd.Flag("dest-host").Changed {
+		cfg.Destination.Host = viper.GetString("destination.host")
+	} else if cfg.Destination.Host == "" {
+		cfg.Destination.Host = cfg.Source.Host
+	}
+
+	if cmd.Flag("dest-port").Changed {
+		cfg.Destination.Port = viper.GetInt("destination.port")
+	} else if cfg.Destination.Port == 0 {
+		cfg.Destination.Port = cfg.Source.Port
+	}
+
+	if cmd.Flag("dest-user").Changed {
+		cfg.Destination.Username = viper.GetString("destination.username")
+	} else if cfg.Destination.Username == "" {
+		cfg.Destination.Username = cfg.Source.Username
+	}
+
+	if cmd.Flag("dest-password").Changed {
+		cfg.Destination.Password = viper.GetString("destination.password")
+	} else if cfg.Destination.Password == "" {
+		cfg.Destination.Password = cfg.Source.Password
+	}
+
+	if cmd.Flag("dest-sslmode").Changed {
+		cfg.Destination.SSLMode = viper.GetString("destination.sslmode")
+	} else if cfg.Destination.SSLMode == "" {
+		cfg.Destination.SSLMode = cfg.Source.SSLMode
+	}
+
+	// Target database
+	if cmd.Flag("target-db").Changed {
+		cfg.TargetDatabase = viper.GetString("target_database")
+	}
+
+	// Ensure destination database is set to the target database
+	// This is required for validation but will be overridden during the fork process
+	if cfg.Destination.Database == "" {
+		cfg.Destination.Database = cfg.TargetDatabase
+	}
+
+	// Fork options - flags override env vars
+	if cmd.Flag("drop-if-exists").Changed {
+		cfg.DropIfExists = viper.GetBool("drop_if_exists")
+	}
+
+	if cmd.Flag("max-connections").Changed {
+		cfg.MaxConnections = viper.GetInt("max_connections")
+	} else if cfg.MaxConnections == 0 {
+		cfg.MaxConnections = 4
+	}
+
+	if cmd.Flag("chunk-size").Changed {
+		cfg.ChunkSize = viper.GetInt("chunk_size")
+	} else if cfg.ChunkSize == 0 {
+		cfg.ChunkSize = 1000
+	}
+
+	if cmd.Flag("timeout").Changed {
+		cfg.Timeout = viper.GetDuration("timeout")
+	} else if cfg.Timeout == 0 {
+		cfg.Timeout = 30 * time.Minute
+	}
+
+	if cmd.Flag("exclude-tables").Changed {
+		cfg.ExcludeTables = viper.GetStringSlice("exclude_tables")
+	}
+
+	if cmd.Flag("include-tables").Changed {
+		cfg.IncludeTables = viper.GetStringSlice("include_tables")
+	}
+
+	if cmd.Flag("schema-only").Changed {
+		cfg.SchemaOnly = viper.GetBool("schema_only")
+	}
+
+	if cmd.Flag("data-only").Changed {
+		cfg.DataOnly = viper.GetBool("data_only")
+	}
+
+	// CI/CD configuration
+	if cmd.Flag("output-format").Changed {
+		cfg.OutputFormat = viper.GetString("output_format")
+	} else if cfg.OutputFormat == "" {
+		cfg.OutputFormat = "text"
+	}
+
+	if cmd.Flag("quiet").Changed {
+		cfg.Quiet = viper.GetBool("quiet")
+	}
+
+	if cmd.Flag("dry-run").Changed {
+		cfg.DryRun = viper.GetBool("dry_run")
+	}
+
+	// Template variables - flags override env vars
+	if cmd.Flag("template-var").Changed {
+		templateVars := viper.GetStringMapString("template_vars")
+		if cfg.TemplateVars == nil {
+			cfg.TemplateVars = make(map[string]string)
+		}
+		// Merge flag values with existing env values
+		for k, v := range templateVars {
+			cfg.TemplateVars[k] = v
+		}
+	}
+
+	// Set default log level if not set
+	if cfg.LogLevel == "" {
+		cfg.LogLevel = "info"
+	}
+
+	return cfg
 }
 
 // runInteractiveMode guides the user through setting up the fork configuration
